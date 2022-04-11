@@ -24,20 +24,20 @@ type Comparable[T any] interface {
 }
 
 type T[K Comparable[K], D ComparableStringer] struct {
-	root *node32[K, D]
+	root *node[K, D]
 	size int
 }
 
-type node32[K Comparable[K], D ComparableStringer] struct {
+type node[K Comparable[K], D ComparableStringer] struct {
 	// Standard conventions hold for left = smaller, right = larger
-	left, right *node32[K, D]
+	left, right *node[K, D]
 	data        D
 	key         K
 	height_     int8
 }
 
-func makeNode[K Comparable[K], D ComparableStringer](key K) *node32[K, D] {
-	return &node32[K, D]{key: key, height_: LEAF_HEIGHT}
+func makeNode[K Comparable[K], D ComparableStringer](key K) *node[K, D] {
+	return &node[K, D]{key: key, height_: LEAF_HEIGHT}
 }
 
 // IsSingle returns true iff t is empty.
@@ -59,7 +59,7 @@ func (t *T[K, D]) VisitInOrder(f func(K, D)) {
 	t.root.visitInOrder(f)
 }
 
-func (n *node32[K, D]) nilOrData() D {
+func (n *node[K, D]) nilOrData() D {
 	if n == nil {
 		var z D
 		return z
@@ -67,7 +67,7 @@ func (n *node32[K, D]) nilOrData() D {
 	return n.data
 }
 
-func (n *node32[K, D]) nilOrKeyAndData() (k K, d D) {
+func (n *node[K, D]) nilOrKeyAndData() (k K, d D) {
 	if n == nil {
 		var z K
 		k = z
@@ -79,7 +79,7 @@ func (n *node32[K, D]) nilOrKeyAndData() (k K, d D) {
 	return
 }
 
-func (n *node32[K, D]) height() int8 {
+func (n *node[K, D]) height() int8 {
 	if n == nil {
 		return 0
 	}
@@ -104,8 +104,8 @@ func (t *T[K, D]) Find(x K) D {
 // key in the tree.
 func (t *T[K, D]) Insert(x K, data D) D {
 	n := t.root
-	var newroot *node32[K, D]
-	var o *node32[K, D]
+	var newroot *node[K, D]
+	var o *node[K, D]
 	if n == nil {
 		n = makeNode[K, D](x)
 		newroot = n
@@ -374,7 +374,7 @@ func (t *T[K, D]) String() string {
 	return b
 }
 
-func (t *node32[K, D]) equals(u *node32[K, D]) bool {
+func (t *node[K, D]) equals(u *node[K, D]) bool {
 	if t == u {
 		return true
 	}
@@ -405,7 +405,7 @@ func (t *T[K, D]) Equiv(u *T[K, D], eqv func(x, y D) bool) bool {
 	return t.root.equiv(u.root, eqv)
 }
 
-func (t *node32[K, D]) equiv(u *node32[K, D], eqv func(x, y D) bool) bool {
+func (t *node[K, D]) equiv(u *node[K, D], eqv func(x, y D) bool) bool {
 	if t == u {
 		return true
 	}
@@ -427,7 +427,7 @@ func (t *node32[K, D]) equiv(u *node32[K, D], eqv func(x, y D) bool) bool {
 }
 
 type iterator[K Comparable[K], D ComparableStringer] struct {
-	parents []*node32[K, D]
+	parents []*node[K, D]
 }
 
 type Iterator[K Comparable[K], D ComparableStringer] struct {
@@ -446,16 +446,16 @@ func (it *Iterator[K, D]) IsEmpty() bool {
 	return len(it.it.parents) == 0
 }
 
-func (t *node32[K, D]) iterator() iterator[K, D] {
+func (t *node[K, D]) iterator() iterator[K, D] {
 	if t == nil {
 		return iterator[K, D]{}
 	}
-	it := iterator[K, D]{parents: make([]*node32[K, D], 0, int(t.height()))}
+	it := iterator[K, D]{parents: make([]*node[K, D], 0, int(t.height()))}
 	it.leftmost(t)
 	return it
 }
 
-func (it *iterator[K, D]) leftmost(t *node32[K, D]) {
+func (it *iterator[K, D]) leftmost(t *node[K, D]) {
 	for t != nil {
 		it.parents = append(it.parents, t)
 		t = t.left
@@ -466,7 +466,7 @@ func (it *iterator[K, D]) isEmpty() bool {
 	return len(it.parents) == 0
 }
 
-func (it *iterator[K, D]) next() *node32[K, D] {
+func (it *iterator[K, D]) next() *node[K, D] {
 	l := len(it.parents)
 	if l == 0 {
 		return nil
@@ -525,11 +525,11 @@ func (t *T[K, D]) LubEq(x K) (k K, d D) {
 	return t.root.lub(x, true).nilOrKeyAndData()
 }
 
-func (t *node32[K, D]) isLeaf() bool {
+func (t *node[K, D]) isLeaf() bool {
 	return t.left == nil && t.right == nil && t.height_ == LEAF_HEIGHT
 }
 
-func (t *node32[K, D]) visitInOrder(f func(K, D)) {
+func (t *node[K, D]) visitInOrder(f func(K, D)) {
 	if t.left != nil {
 		t.left.visitInOrder(f)
 	}
@@ -539,7 +539,7 @@ func (t *node32[K, D]) visitInOrder(f func(K, D)) {
 	}
 }
 
-func (t *node32[K, D]) find(key K) *node32[K, D] {
+func (t *node[K, D]) find(key K) *node[K, D] {
 	for t != nil {
 		if key.Less(t.key) {
 			t = t.left
@@ -552,7 +552,7 @@ func (t *node32[K, D]) find(key K) *node32[K, D] {
 	return nil
 }
 
-func (t *node32[K, D]) min() *node32[K, D] {
+func (t *node[K, D]) min() *node[K, D] {
 	if t == nil {
 		return t
 	}
@@ -562,7 +562,7 @@ func (t *node32[K, D]) min() *node32[K, D] {
 	return t
 }
 
-func (t *node32[K, D]) max() *node32[K, D] {
+func (t *node[K, D]) max() *node[K, D] {
 	if t == nil {
 		return t
 	}
@@ -572,8 +572,8 @@ func (t *node32[K, D]) max() *node32[K, D] {
 	return t
 }
 
-func (t *node32[K, D]) glb(key K, allow_eq bool) *node32[K, D] {
-	var best *node32[K, D] = nil
+func (t *node[K, D]) glb(key K, allow_eq bool) *node[K, D] {
+	var best *node[K, D] = nil
 	for t != nil {
 		if !t.key.Less(key) { // key <= t.key == ! key > t.key == !t.key.Less(key)
 			if allow_eq && key == t.key {
@@ -590,8 +590,8 @@ func (t *node32[K, D]) glb(key K, allow_eq bool) *node32[K, D] {
 	return best
 }
 
-func (t *node32[K, D]) lub(key K, allow_eq bool) *node32[K, D] {
-	var best *node32[K, D] = nil
+func (t *node[K, D]) lub(key K, allow_eq bool) *node[K, D] {
+	var best *node[K, D] = nil
 	for t != nil {
 		if !key.Less(t.key) { // key >= t.key == !key.Less(t.key)
 			if allow_eq && key == t.key {
@@ -608,7 +608,7 @@ func (t *node32[K, D]) lub(key K, allow_eq bool) *node32[K, D] {
 	return best
 }
 
-func (t *node32[K, D]) aInsert(x K) (newroot, newnode, oldnode *node32[K, D]) {
+func (t *node[K, D]) aInsert(x K) (newroot, newnode, oldnode *node[K, D]) {
 	// oldnode default of nil is good, others should be assigned.
 	if x == t.key {
 		oldnode = t
@@ -627,7 +627,7 @@ func (t *node32[K, D]) aInsert(x K) (newroot, newnode, oldnode *node32[K, D]) {
 			t.height_ = 2 // was balanced w/ 0, sibling is height 0 or 1
 			return
 		}
-		var new_l *node32[K, D]
+		var new_l *node[K, D]
 		new_l, newnode, oldnode = t.left.aInsert(x)
 		t = t.copy()
 		t.left = new_l
@@ -647,7 +647,7 @@ func (t *node32[K, D]) aInsert(x K) (newroot, newnode, oldnode *node32[K, D]) {
 			t.height_ = 2 // was balanced w/ 0, sibling is height 0 or 1
 			return
 		}
-		var new_r *node32[K, D]
+		var new_r *node[K, D]
 		new_r, newnode, oldnode = t.right.aInsert(x)
 		t = t.copy()
 		t.right = new_r
@@ -661,7 +661,7 @@ func (t *node32[K, D]) aInsert(x K) (newroot, newnode, oldnode *node32[K, D]) {
 	return
 }
 
-func (t *node32[K, D]) aDelete(key K) (deleted, newSubTree *node32[K, D]) {
+func (t *node[K, D]) aDelete(key K) (deleted, newSubTree *node[K, D]) {
 	if t == nil {
 		return nil, nil
 	}
@@ -705,7 +705,7 @@ func (t *node32[K, D]) aDelete(key K) (deleted, newSubTree *node32[K, D]) {
 	return r, t.aRebalanceAfterRightDeletion(oh, tright)
 }
 
-func (t *node32[K, D]) aDeleteMin() (deleted, newSubTree *node32[K, D]) {
+func (t *node[K, D]) aDeleteMin() (deleted, newSubTree *node[K, D]) {
 	if t == nil {
 		return nil, nil
 	}
@@ -720,7 +720,7 @@ func (t *node32[K, D]) aDeleteMin() (deleted, newSubTree *node32[K, D]) {
 	return d, t.copy().aRebalanceAfterLeftDeletion(oh, tleft)
 }
 
-func (t *node32[K, D]) aDeleteMax() (deleted, newSubTree *node32[K, D]) {
+func (t *node[K, D]) aDeleteMax() (deleted, newSubTree *node[K, D]) {
 	if t == nil {
 		return nil, nil
 	}
@@ -737,7 +737,7 @@ func (t *node32[K, D]) aDeleteMax() (deleted, newSubTree *node32[K, D]) {
 	return d, t.copy().aRebalanceAfterRightDeletion(oh, tright)
 }
 
-func (t *node32[K, D]) aRebalanceAfterLeftDeletion(oldLeftHeight int8, tleft *node32[K, D]) *node32[K, D] {
+func (t *node[K, D]) aRebalanceAfterLeftDeletion(oldLeftHeight int8, tleft *node[K, D]) *node[K, D] {
 	t.left = tleft
 
 	if oldLeftHeight == tleft.height() || oldLeftHeight == t.right.height() {
@@ -756,7 +756,7 @@ func (t *node32[K, D]) aRebalanceAfterLeftDeletion(oldLeftHeight int8, tleft *no
 	return t.aRightIsHigh(nil)
 }
 
-func (t *node32[K, D]) aRebalanceAfterRightDeletion(oldRightHeight int8, tright *node32[K, D]) *node32[K, D] {
+func (t *node[K, D]) aRebalanceAfterRightDeletion(oldRightHeight int8, tright *node[K, D]) *node[K, D] {
 	t.right = tright
 
 	if oldRightHeight == tright.height() || oldRightHeight == t.left.height() {
@@ -777,7 +777,7 @@ func (t *node32[K, D]) aRebalanceAfterRightDeletion(oldRightHeight int8, tright 
 
 // aRightIsHigh does rotations necessary to fix a high right child
 // assume that t and t.right are already fresh copies.
-func (t *node32[K, D]) aRightIsHigh(newnode *node32[K, D]) *node32[K, D] {
+func (t *node[K, D]) aRightIsHigh(newnode *node[K, D]) *node[K, D] {
 	right := t.right
 	if right.right.height() < right.left.height() {
 		// double rotation
@@ -792,7 +792,7 @@ func (t *node32[K, D]) aRightIsHigh(newnode *node32[K, D]) *node32[K, D] {
 
 // aLeftIsHigh does rotations necessary to fix a high left child
 // assume that t and t.left are already fresh copies.
-func (t *node32[K, D]) aLeftIsHigh(newnode *node32[K, D]) *node32[K, D] {
+func (t *node[K, D]) aLeftIsHigh(newnode *node[K, D]) *node[K, D] {
 	left := t.left
 	if left.left.height() < left.right.height() {
 		// double rotation
@@ -806,7 +806,7 @@ func (t *node32[K, D]) aLeftIsHigh(newnode *node32[K, D]) *node32[K, D] {
 }
 
 // rightToRoot does that rotation, modifying t and t.right in the process.
-func (t *node32[K, D]) rightToRoot() *node32[K, D] {
+func (t *node[K, D]) rightToRoot() *node[K, D] {
 	//    this
 	// left  right
 	//      rl   rr
@@ -828,7 +828,7 @@ func (t *node32[K, D]) rightToRoot() *node32[K, D] {
 }
 
 // leftToRoot does that rotation, modifying t and t.left in the process.
-func (t *node32[K, D]) leftToRoot() *node32[K, D] {
+func (t *node[K, D]) leftToRoot() *node[K, D] {
 	//     this
 	//  left  right
 	// ll  lr
@@ -856,7 +856,7 @@ func max(a, b int8) int8 {
 	return b
 }
 
-func (t *node32[K, D]) copy() *node32[K, D] {
+func (t *node[K, D]) copy() *node[K, D] {
 	u := *t
 	return &u
 }

@@ -590,7 +590,7 @@ func wellFormed(t *T[Int32, sstring]) (s string, i int) {
 // then the returned string is empty. The size is also
 // returned to allow comparison of calculated tree size
 // with expected.
-func wellFormedSubtree(t, parent *node32[Int32, sstring], keyMin, keyMax Int32) (s string, i int) {
+func wellFormedSubtree(t, parent *node[Int32, sstring], keyMin, keyMax Int32) (s string, i int) {
 	i = -1 // initialize to a failing value
 	s = "" // s is the reason for failure; empty means okay.
 
@@ -689,7 +689,7 @@ func (t *T[K, D]) DebugString() string {
 
 // DebugString prints the tree with nested information
 // to allow an eyeball check on the tree balance.
-func (t *node32[K, D]) DebugString(indent int) string {
+func (t *node[K, D]) DebugString(indent int) string {
 	s := ""
 	if t.left != nil {
 		s = s + t.left.DebugString(indent+1)
