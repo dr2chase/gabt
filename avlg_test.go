@@ -26,8 +26,14 @@ func stringer(s string) sstring {
 
 type Int32 int32
 
-func (x Int32) Less(y Int32) bool {
-	return x < y
+func (x Int32) Compare(y Int32) int {
+	if x < y {
+		return -1
+	}
+	if x > y {
+		return 1
+	}
+	return 0
 }
 
 func makeTree(te *testing.T, x []int32, check bool) (t *T[Int32, sstring], k int, min, max Int32) {

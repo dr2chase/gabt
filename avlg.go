@@ -19,8 +19,7 @@ type ComparableStringer interface {
 }
 
 type Comparable[T any] interface {
-	comparable
-	Less(T) bool
+	Compare(T) int
 }
 
 type T[K Comparable[K], D ComparableStringer] struct {
@@ -385,10 +384,10 @@ func (t *node[K, D]) equals(u *node[K, D]) bool {
 		if nt == nu {
 			continue
 		}
-		if nt.key != nu.key {
+		if nt.key.Compare(nu.key) != 0 {
 			return false
 		}
-		if nt.data.String() != nu.data.String() {
+		if nt.data != nu.data {
 			return false
 		}
 	}
@@ -416,7 +415,7 @@ func (t *node[K, D]) equiv(u *node[K, D], eqv func(x, y D) bool) bool {
 		if nt == nu {
 			continue
 		}
-		if nt.key != nu.key {
+		if nt.key.Compare(nu.key) != 0 {
 			return false
 		}
 		if !eqv(nt.data, nu.data) {
@@ -541,9 +540,10 @@ func (t *node[K, D]) visitInOrder(f func(K, D)) {
 
 func (t *node[K, D]) find(key K) *node[K, D] {
 	for t != nil {
-		if key.Less(t.key) {
+		cmp := key.Compare(t.key)
+		if cmp < 0 {
 			t = t.left
-		} else if t.key.Less(key) {
+		} else if cmp > 0 {
 			t = t.right
 		} else {
 			return t
@@ -575,8 +575,8 @@ func (t *node[K, D]) max() *node[K, D] {
 func (t *node[K, D]) glb(key K, allow_eq bool) *node[K, D] {
 	var best *node[K, D] = nil
 	for t != nil {
-		if !t.key.Less(key) { // key <= t.key == ! key > t.key == !t.key.Less(key)
-			if allow_eq && key == t.key {
+		if cmp := key.Compare(t.key); cmp <= 0 { 
+			if allow_eq && cmp == 0 {
 				return t
 			}
 			// t is too big, glb is to left.
@@ -593,8 +593,8 @@ func (t *node[K, D]) glb(key K, allow_eq bool) *node[K, D] {
 func (t *node[K, D]) lub(key K, allow_eq bool) *node[K, D] {
 	var best *node[K, D] = nil
 	for t != nil {
-		if !key.Less(t.key) { // key >= t.key == !key.Less(t.key)
-			if allow_eq && key == t.key {
+		if cmp := key.Compare(t.key); cmp >= 0 { 
+			if allow_eq && cmp == 0 {
 				return t
 			}
 			// t is too small, lub is to right.
@@ -610,14 +610,15 @@ func (t *node[K, D]) lub(key K, allow_eq bool) *node[K, D] {
 
 func (t *node[K, D]) aInsert(x K) (newroot, newnode, oldnode *node[K, D]) {
 	// oldnode default of nil is good, others should be assigned.
-	if x == t.key {
+	cmp := x.Compare(t.key)
+	if cmp == 0 {
 		oldnode = t
 		newt := *t
 		newnode = &newt
 		newroot = newnode
 		return
 	}
-	if x.Less(t.key) {
+	if cmp < 0 {
 		if t.left == nil {
 			t = t.copy()
 			n := makeNode[K, D](x)
@@ -666,14 +667,15 @@ func (t *node[K, D]) aDelete(key K) (deleted, newSubTree *node[K, D]) {
 		return nil, nil
 	}
 
-	if key.Less(t.key) {
+	cmp := key.Compare(t.key)
+	if cmp < 0 {
 		oh := t.left.height()
 		d, tleft := t.left.aDelete(key)
 		if tleft == t.left {
 			return d, t
 		}
 		return d, t.copy().aRebalanceAfterLeftDeletion(oh, tleft)
-	} else if t.key.Less(key) {
+	} else if cmp > 0 {
 		oh := t.right.height()
 		d, tright := t.right.aDelete(key)
 		if tright == t.right {
