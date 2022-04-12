@@ -346,27 +346,27 @@ func applicIterator(te *testing.T, x []int32) {
 func applicEquals(te *testing.T, x, y []int32) {
 	t, _, _, _ := makeTree(te, x, false)
 	u, _, _, _ := makeTree(te, y, false)
-	if !t.Equals(t) {
+	if !Equals(t, t) {
 		te.Errorf("Equals failure, t == t, =\n%v", t.DebugString())
 		return
 	}
-	if !t.Equals(t.Copy()) {
+	if !Equals(t, t.Copy()) {
 		te.Errorf("Equals failure, t == t.Copy(), =\n%v", t.DebugString())
 		return
 	}
-	if !t.Equals(u) {
+	if !Equals(t, u) {
 		te.Errorf("Equals failure, t == u, =\n%v", t.DebugString())
 		return
 	}
 	v := t.Copy()
 
 	v.DeleteMax()
-	if t.Equals(v) {
+	if Equals(t, v) {
 		te.Errorf("!Equals failure, t != v, =\n%v\nand%v\n", t.DebugString(), v.DebugString())
 		return
 	}
 
-	if v.Equals(u) {
+	if Equals(v, u) {
 		te.Errorf("!Equals failure, v != u, =\n%v\nand%v\n", v.DebugString(), u.DebugString())
 		return
 	}
@@ -497,7 +497,7 @@ func assert(t *testing.T, expected, got *T[Int32, sstring], what string) {
 		return
 	}
 
-	if !expected.Equals(got) {
+	if !Equals(expected, got) {
 		t.Errorf("%s fail, expected\n%vgot\n%v\n", what, expected.DebugString(), got.DebugString())
 	}
 }
@@ -512,65 +512,65 @@ func TestSetOps(t *testing.T) {
 	AUB := tree([]int32{1, 2, 3, 4, 5, 6, 7})
 	AXB := tree([]int32{1, 2, 5, 6, 7})
 
-	aib1 := A.Intersection(B, first)
+	aib1 := Intersection(A, B, first)
 	assert(t, AIB, aib1, "aib1")
 	if A.Find(3) != aib1.Find(3) {
 		t.Errorf("Failed aliasing/reuse check, A/aib1")
 	}
-	aib2 := A.Intersection(B, second)
+	aib2 := Intersection(A, B, second)
 	assert(t, AIB, aib2, "aib2")
 	if B.Find(3) != aib2.Find(3) {
 		t.Errorf("Failed aliasing/reuse check, B/aib2")
 	}
-	aib3 := B.Intersection(A, first)
+	aib3 := Intersection(B, A, first)
 	assert(t, AIB, aib3, "aib3")
 	if A.Find(3) != aib3.Find(3) {
 		// A is smaller, intersection favors reuse from smaller when function is "first"
 		t.Errorf("Failed aliasing/reuse check, A/aib3")
 	}
-	aib4 := B.Intersection(A, second)
+	aib4 := Intersection(B, A, second)
 	assert(t, AIB, aib4, "aib4")
 	if A.Find(3) != aib4.Find(3) {
 		t.Errorf("Failed aliasing/reuse check, A/aib4")
 	}
 
-	aub1 := A.Union(B, first)
+	aub1 := Union(A, B, first)
 	assert(t, AUB, aub1, "aub1")
 	if B.Find(3) != aub1.Find(3) {
 		// B is larger, union favors reuse from larger when function is "first"
 		t.Errorf("Failed aliasing/reuse check, A/aub1")
 	}
-	aub2 := A.Union(B, second)
+	aub2 := Union(A, B, second)
 	assert(t, AUB, aub2, "aub2")
 	if B.Find(3) != aub2.Find(3) {
 		t.Errorf("Failed aliasing/reuse check, B/aub2")
 	}
-	aub3 := B.Union(A, first)
+	aub3 := Union(B, A, first)
 	assert(t, AUB, aub3, "aub3")
 	if B.Find(3) != aub3.Find(3) {
 		t.Errorf("Failed aliasing/reuse check, B/aub3")
 	}
-	aub4 := B.Union(A, second)
+	aub4 := Union(B, A, second)
 	assert(t, AUB, aub4, "aub4")
 	if A.Find(3) != aub4.Find(3) {
 		t.Errorf("Failed aliasing/reuse check, A/aub4")
 	}
 
-	axb1 := A.Union(B, alwaysNil)
+	axb1 := Union(A, B, alwaysNil)
 	assert(t, AXB, axb1, "axb1")
-	axb2 := B.Union(A, alwaysNil)
+	axb2 := Union(B, A, alwaysNil)
 	assert(t, AXB, axb2, "axb2")
 
-	adb := A.Difference(B, alwaysNil)
+	adb := Difference(A, B, alwaysNil)
 	assert(t, ADB, adb, "adb")
-	bda := B.Difference(A, nil)
+	bda := Difference(B, A, nil)
 	assert(t, BDA, bda, "bda")
 
 	Ap1 := treePlus1([]int32{1, 2, 3, 4})
 
-	ada1_1 := A.Difference(Ap1, smaller)
+	ada1_1 := Difference(A, Ap1, smaller)
 	assert(t, A, ada1_1, "ada1_1")
-	ada1_2 := Ap1.Difference(A, smaller)
+	ada1_2 := Difference(Ap1, A, smaller)
 	assert(t, A, ada1_2, "ada1_2")
 
 }

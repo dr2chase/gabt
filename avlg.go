@@ -13,21 +13,16 @@ const (
 	ZERO_HEIGHT = 0
 )
 
-type ComparableStringer interface {
-	comparable
-	fmt.Stringer
-}
-
 type Comparable[T any] interface {
 	Compare(T) int
 }
 
-type T[K Comparable[K], D ComparableStringer] struct {
+type T[K Comparable[K], D any] struct {
 	root *node[K, D]
 	size int
 }
 
-type node[K Comparable[K], D ComparableStringer] struct {
+type node[K Comparable[K], D any] struct {
 	// Standard conventions hold for left = smaller, right = larger
 	left, right *node[K, D]
 	data        D
@@ -35,7 +30,7 @@ type node[K Comparable[K], D ComparableStringer] struct {
 	height_     int8
 }
 
-func makeNode[K Comparable[K], D ComparableStringer](key K) *node[K, D] {
+func makeNode[K Comparable[K], D any](key K) *node[K, D] {
 	return &node[K, D]{key: key, height_: LEAF_HEIGHT}
 }
 
@@ -183,7 +178,7 @@ func (t *T[K, D]) Size() int {
 // if nil, then the entry is not added.  If f is nil, then the data from the
 // smaller set is what will be used (this maximizes sharing, if that result
 // is acceptable).
-func (t *T[K, D]) Intersection(u *T[K, D], f func(x, y D) D) *T[K, D] {
+func Intersection[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K, D] {
 	if t.Size() == 0 || u.Size() == 0 {
 		return &T[K, D]{}
 	}
@@ -238,7 +233,7 @@ func (t *T[K, D]) Intersection(u *T[K, D], f func(x, y D) D) *T[K, D] {
 // is given by f(t's data, u's data) -- f need not be symmetric.  If f returns nil,
 // then the key and data are not added to the result.  If f is nil,
 // then wherever the sets overlap, the data from the larger set is used.
-func (t *T[K, D]) Union(u *T[K, D], f func(x, y D) D) *T[K, D] {
+func Union[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K, D] {
 	if t.Size() == 0 {
 		return u
 	}
@@ -295,7 +290,7 @@ func (t *T[K, D]) Union(u *T[K, D], f func(x, y D) D) *T[K, D] {
 // modified by f.  If f is nil, or returns nil, then the usual
 // difference results, however if it returns not-nil then 
 // the entry is not removed and the new valye is used for the data.
-func (t *T[K, D]) Difference(u *T[K, D], f func(x, y D) D) *T[K, D] {
+func Difference[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K, D] {
 	if t.Size() == 0 {
 		return &T[K, D]{}
 	}
@@ -328,14 +323,35 @@ func (t *T[K, D]) Iterator() Iterator[K, D] {
 	return Iterator[K, D]{it: t.root.iterator()}
 }
 
-func (t *T[K, D]) Equals(u *T[K, D]) bool {
+func Equals[K Comparable[K], D comparable](t, u *T[K, D]) bool {
 	if t == u {
 		return true
 	}
 	if t.Size() != u.Size() {
 		return false
 	}
-	return t.root.equals(u.root)
+	return equals(t.root, u.root)
+}
+
+func equals[K Comparable[K], D comparable](t, u *node[K, D]) bool {
+	if t == u {
+		return true
+	}
+	it, iu := t.iterator(), u.iterator()
+	for !it.isEmpty() && !iu.isEmpty() {
+		nt := it.next()
+		nu := iu.next()
+		if nt == nu {
+			continue
+		}
+		if nt.key.Compare(nu.key) != 0 {
+			return false
+		}
+		if nt.data != nu.data {
+			return false
+		}
+	}
+	return it.isEmpty() == iu.isEmpty()
 }
 
 // This doesn't build with go1.4, sigh
@@ -368,30 +384,9 @@ func (t *T[K, D]) String() string {
 		}
 		b += fmt.Sprintf("%v", k)
 		b += (":")
-		b += (v.String())
+		b += fmt.Sprint(v)
 	}
 	return b
-}
-
-func (t *node[K, D]) equals(u *node[K, D]) bool {
-	if t == u {
-		return true
-	}
-	it, iu := t.iterator(), u.iterator()
-	for !it.isEmpty() && !iu.isEmpty() {
-		nt := it.next()
-		nu := iu.next()
-		if nt == nu {
-			continue
-		}
-		if nt.key.Compare(nu.key) != 0 {
-			return false
-		}
-		if nt.data != nu.data {
-			return false
-		}
-	}
-	return it.isEmpty() == iu.isEmpty()
 }
 
 func (t *T[K, D]) Equiv(u *T[K, D], eqv func(x, y D) bool) bool {
@@ -425,11 +420,11 @@ func (t *node[K, D]) equiv(u *node[K, D], eqv func(x, y D) bool) bool {
 	return it.isEmpty() == iu.isEmpty()
 }
 
-type iterator[K Comparable[K], D ComparableStringer] struct {
+type iterator[K Comparable[K], D any] struct {
 	parents []*node[K, D]
 }
 
-type Iterator[K Comparable[K], D ComparableStringer] struct {
+type Iterator[K Comparable[K], D any] struct {
 	it iterator[K, D]
 }
 
