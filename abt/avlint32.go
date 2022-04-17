@@ -2,43 +2,83 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package gabt
+package abt
 
 import (
 	"fmt"
+	"strconv"
 )
 
-type Comparable[T any] interface {
-	Compare(T) int
-}
+const (
+	LEAF_HEIGHT = 1
+	ZERO_HEIGHT = 0
+	NOT_KEY32   = int32(-0x80000000)
+)
 
-type T[K Comparable[K], D any] struct {
-	root *node[K, D]
+type T struct {
+	root *node32
 	size int
 }
 
+type node32 struct {
+	// Standard conventions hold for left = smaller, right = larger
+	left, right *node32
+	data        fmt.Stringer
+	key         int32
+	height_     int8
+}
+
+func makeNode(key int32) *node32 {
+	return &node32{key: key, height_: LEAF_HEIGHT}
+}
+
 // IsSingle returns true iff t is empty.
-func (t *T[K, D]) IsEmpty() bool {
+func (t *T) IsEmpty() bool {
 	return t.root == nil
 }
 
 // IsSingle returns true iff t is a singleton (leaf).
-func (t *T[K, D]) IsSingle() bool {
+func (t *T) IsSingle() bool {
 	return t.root != nil && t.root.isLeaf()
 }
 
-// VisitInOrder applies f to the key and ComparableStringerata pairs in t,
+// VisitInOrder applies f to the key and data pairs in t,
 // with keys ordered from smallest to largest.
-func (t *T[K, D]) VisitInOrder(f func(K, D)) {
+func (t *T) VisitInOrder(f func(int32, fmt.Stringer)) {
 	if t.root == nil {
 		return
 	}
 	t.root.visitInOrder(f)
 }
 
+func (n *node32) nilOrData() fmt.Stringer {
+	if n == nil {
+		return nil
+	}
+	return n.data
+}
+
+func (n *node32) nilOrKeyAndData() (k int32, d fmt.Stringer) {
+	if n == nil {
+		k = NOT_KEY32
+		d = nil
+	} else {
+		k = n.key
+		d = n.data
+	}
+	return
+}
+
+func (n *node32) height() int8 {
+	if n == nil {
+		return 0
+	}
+	return n.height_
+}
+
 // Find returns the data associated with x in the tree, or
 // nil if x is not in the tree.
-func (t *T[K, D]) Find(x K) D {
+func (t *T) Find(x int32) fmt.Stringer {
 	return t.root.find(x).nilOrData()
 }
 
@@ -47,17 +87,17 @@ func (t *T[K, D]) Find(x K) D {
 // x was already a key in the tree.  The previous data associated
 // with x is returned, and is nil if x was not previously a
 // key in the tree.
-func (t *T[K, D]) Insert(x K, data D) D {
+func (t *T) Insert(x int32, data fmt.Stringer) fmt.Stringer {
 	n := t.root
-	var newroot *node[K, D]
-	var o *node[K, D]
+	var newroot *node32
+	var o *node32
 	if n == nil {
-		n = makeNode[K, D](x)
+		n = makeNode(x)
 		newroot = n
 	} else {
 		newroot, n, o = n.aInsert(x)
 	}
-	var r D
+	var r fmt.Stringer
 	if o != nil {
 		r = o.data
 	} else {
@@ -68,119 +108,215 @@ func (t *T[K, D]) Insert(x K, data D) D {
 	return r
 }
 
-func (t *T[K, D]) Copy() *T[K, D] {
+func (t *T) Copy() *T {
 	u := *t
 	return &u
 }
 
-func (t *T[K, D]) Delete(x K) D {
+func (t *T) Delete(x int32) fmt.Stringer {
 	n := t.root
-	var zero D
 	if n == nil {
-		return zero
+		return nil
 	}
 	d, s := n.aDelete(x)
 	if d == nil {
-		return zero
+		return nil
 	}
 	t.root = s
 	t.size--
 	return d.data
 }
 
-func (t *T[K, D]) DeleteMin() (K, D) {
+func (t *T) DeleteMin() (int32, fmt.Stringer) {
 	n := t.root
-	var zk K
-	var zd D
 	if n == nil {
-		return zk, zd
+		return NOT_KEY32, nil
 	}
 	d, s := n.aDeleteMin()
 	if d == nil {
-		return zk, zd
+		return NOT_KEY32, nil
 	}
 	t.root = s
 	t.size--
 	return d.key, d.data
 }
 
-func (t *T[K, D]) DeleteMax() (K, D) {
+func (t *T) DeleteMax() (int32, fmt.Stringer) {
 	n := t.root
-	var zk K
-	var zd D
 	if n == nil {
-		return zk, zd
+		return NOT_KEY32, nil
 	}
 	d, s := n.aDeleteMax()
 	if d == nil {
-		return zk, zd
+		return NOT_KEY32, nil
 	}
 	t.root = s
 	t.size--
 	return d.key, d.data
 }
 
-func (t *T[K, D]) Size() int {
+func (t *T) Size() int {
 	return t.size
 }
 
-type Iterator[K Comparable[K], D any] struct {
-	it iterator[K, D]
-}
-
-func (it *Iterator[K, D]) Next() (K, D) {
-	x := it.it.next()
-	if x == nil {
-		return zero[K](), zero[D]()
+func (t *T) Intersection(u *T, f func(x, y fmt.Stringer) fmt.Stringer) *T {
+	if t.Size() == 0 || u.Size() == 0 {
+		return &T{}
 	}
-	return x.key, x.data
+
+	// For faster execution and less allocation, prefer t smaller, iterate over t.
+	if t.Size() <= u.Size() {
+		v := t.Copy()
+		for it := t.Iterator(); !it.IsEmpty(); {
+			k, d := it.Next()
+			e := u.Find(k)
+			if e == nil {
+				v.Delete(k)
+				continue
+			}
+			if f == nil {
+				continue
+			}
+			if c := f(d, e); c != d {
+				if c == nil {
+					v.Delete(k)
+				} else {
+					v.Insert(k, c)
+				}
+			}
+		}
+		return v
+	}
+	v := u.Copy()
+	for it := u.Iterator(); !it.IsEmpty(); {
+		k, e := it.Next()
+		d := t.Find(k)
+		if d == nil {
+			v.Delete(k)
+			continue
+		}
+		if f == nil {
+			continue
+		}
+		if c := f(d, e); c != d {
+			if c == nil {
+				v.Delete(k)
+			} else {
+				v.Insert(k, c)
+			}
+		}
+	}
+
+	return v
 }
 
-func (it *Iterator[K, D]) Done() bool {
-	return len(it.it.parents) == 0
+// Union returns the union of t and u, where the result data for any common keys
+// is given by f(t's data, u's data) -- f need not be symmetric.  If f returns nil,
+// then the key and data are not added to the result.  To minimize reallocation of
+// common tree structure, if t's data and u's data are regarded as identical, then
+// f should return t's data.
+func (t *T) Union(u *T, f func(x, y fmt.Stringer) fmt.Stringer) *T {
+	if t.Size() == 0 {
+		return u
+	}
+	if u.Size() == 0 {
+		return t
+	}
+
+	if t.Size() >= u.Size() {
+		v := t.Copy()
+		for it := u.Iterator(); !it.IsEmpty(); {
+			k, e := it.Next()
+			d := t.Find(k)
+			if d == nil {
+				v.Insert(k, e)
+				continue
+			}
+			if f == nil {
+				continue
+			}
+			if c := f(d, e); c != d {
+				if c == nil {
+					v.Delete(k)
+				} else {
+					v.Insert(k, c)
+				}
+			}
+		}
+		return v
+	}
+
+	v := u.Copy()
+	for it := t.Iterator(); !it.IsEmpty(); {
+		k, d := it.Next()
+		e := u.Find(k)
+		if e == nil {
+			v.Insert(k, d)
+			continue
+		}
+		if f == nil {
+			continue
+		}
+		if c := f(d, e); c != d {
+			if c == nil {
+				v.Delete(k)
+			} else {
+				v.Insert(k, c)
+			}
+		}
+	}
+	return v
 }
 
-// Min returns the minimum element of t.
-// If t is empty, then (nil, nil) is returned.
-func (t *T[K, D]) Min() (k K, d D) {
-	return t.root.min().nilOrKeyAndData()
+// Difference returns the difference of t and u, provided
+func (t *T) Difference(u *T, f func(x, y fmt.Stringer) fmt.Stringer) *T {
+	if t.Size() == 0 {
+		return &T{}
+	}
+	if u.Size() == 0 {
+		return t
+	}
+	v := t.Copy()
+	for it := t.Iterator(); !it.IsEmpty(); {
+		k, d := it.Next()
+		e := u.Find(k)
+		if e != nil {
+			if f == nil {
+				v.Delete(k)
+				continue
+			}
+			c := f(d, e)
+			if c == nil {
+				v.Delete(k)
+				continue
+			}
+			if c != d {
+				v.Insert(k, c)
+			}
+		}
+	}
+	return v
 }
 
-// Max returns the maximum element of t.
-// If t is empty, then (nil, nil) is returned.
-func (t *T[K, D]) Max() (k K, d D) {
-	return t.root.max().nilOrKeyAndData()
+func (t *T) Iterator() Iterator {
+	return Iterator{it: t.root.iterator()}
 }
 
-// Glb returns the greatest-lower-bound-exclusive of x and the associated
-// data.  If x has no glb in the tree, then (nil, nil) is returned.
-func (t *T[K, D]) Glb(x K) (k K, d D) {
-	return t.root.glb(x, false).nilOrKeyAndData()
-}
-
-// GlbEq returns the greatest-lower-bound-inclusive of x and the associated
-// data.  If x has no glbEQ in the tree, then (nil, nil) is returned.
-func (t *T[K, D]) GlbEq(x K) (k K, d D) {
-	return t.root.glb(x, true).nilOrKeyAndData()
-}
-
-// Lub returns the least-upper-bound-exclusive of x and the associated
-// data.  If x has no lub in the tree, then (nil, nil) is returned.
-func (t *T[K, D]) Lub(x K) (k K, d D) {
-	return t.root.lub(x, false).nilOrKeyAndData()
-}
-
-// LubEq returns the least-upper-bound-inclusive of x and the associated
-// data.  If x has no lubEq in the tree, then (nil, nil) is returned.
-func (t *T[K, D]) LubEq(x K) (k K, d D) {
-	return t.root.lub(x, true).nilOrKeyAndData()
+func (t *T) Equals(u *T) bool {
+	if t == u {
+		return true
+	}
+	if t.Size() != u.Size() {
+		return false
+	}
+	return t.root.equals(u.root)
 }
 
 // This doesn't build with go1.4, sigh
-// func (t *T[K,D]) String() string {
+// func (t *T) String() string {
 // 	var b strings.Builder
 // 	first := true
-// 	for it := t.Iterator(); !it.Done(); {
+// 	for it := t.Iterator(); !it.IsEmpty(); {
 // 		k, v := it.Next()
 // 		if first {
 // 			first = false
@@ -194,28 +330,45 @@ func (t *T[K, D]) LubEq(x K) (k K, d D) {
 // 	return b.String()
 // }
 
-func (t *T[K, D]) Iterator() Iterator[K, D] {
-	return Iterator[K, D]{it: t.root.iterator()}
-}
-
-func (t *T[K, D]) String() string {
+func (t *T) String() string {
 	var b string
 	first := true
-	for it := t.Iterator(); !it.Done(); {
+	for it := t.Iterator(); !it.IsEmpty(); {
 		k, v := it.Next()
 		if first {
 			first = false
 		} else {
 			b += ("; ")
 		}
-		b += fmt.Sprintf("%v", k)
+		b += (strconv.FormatInt(int64(k), 10))
 		b += (":")
-		b += fmt.Sprint(v)
+		b += (v.String())
 	}
 	return b
 }
 
-func (t *T[K, D]) Equiv(u *T[K, D], eqv func(x, y D) bool) bool {
+func (t *node32) equals(u *node32) bool {
+	if t == u {
+		return true
+	}
+	it, iu := t.iterator(), u.iterator()
+	for !it.isEmpty() && !iu.isEmpty() {
+		nt := it.next()
+		nu := iu.next()
+		if nt == nu {
+			continue
+		}
+		if nt.key != nu.key {
+			return false
+		}
+		if nt.data.String() != nu.data.String() {
+			return false
+		}
+	}
+	return it.isEmpty() == iu.isEmpty()
+}
+
+func (t *T) Equiv(u *T, eqv func(x, y fmt.Stringer) bool) bool {
 	if t == u {
 		return true
 	}
@@ -225,212 +378,7 @@ func (t *T[K, D]) Equiv(u *T[K, D], eqv func(x, y D) bool) bool {
 	return t.root.equiv(u.root, eqv)
 }
 
-// Intersection returns the the intersection of T and U, with data modified
-// by the result of f(t.data, u.data); if non-nil/zero, that is the stored value,
-// if nil, then the entry is not added.  If f is nil, then the data from the
-// smaller set is what will be used (this maximizes sharing, if that result
-// is acceptable).
-func Intersection[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K, D] {
-	if t.Size() == 0 || u.Size() == 0 {
-		return &T[K, D]{}
-	}
-
-	// For faster execution and less allocation, prefer t smaller, iterate over t.
-	if t.Size() <= u.Size() {
-		v := t.Copy()
-		for it := t.Iterator(); !it.Done(); {
-			k, d := it.Next()
-			e := u.Find(k)
-			if e == zero[D]() {
-				v.Delete(k)
-				continue
-			}
-			if f == nil {
-				continue
-			}
-			if c := f(d, e); c != d {
-				if c == zero[D]() {
-					v.Delete(k)
-				} else {
-					v.Insert(k, c)
-				}
-			}
-		}
-		return v
-	}
-	v := u.Copy()
-	for it := u.Iterator(); !it.Done(); {
-		k, e := it.Next()
-		d := t.Find(k)
-		if d == zero[D]() {
-			v.Delete(k)
-			continue
-		}
-		if f == nil {
-			continue
-		}
-		if c := f(d, e); c != d {
-			if c == zero[D]() {
-				v.Delete(k)
-			} else {
-				v.Insert(k, c)
-			}
-		}
-	}
-
-	return v
-}
-
-// Union returns the union of t and u, where the result data for any common keys
-// is given by f(t's data, u's data) -- f need not be symmetric.  If f returns nil,
-// then the key and data are not added to the result.  If f is nil,
-// then wherever the sets overlap, the data from the larger set is used.
-func Union[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K, D] {
-	if t.Size() == 0 {
-		return u
-	}
-	if u.Size() == 0 {
-		return t
-	}
-
-	if t.Size() >= u.Size() {
-		v := t.Copy()
-		for it := u.Iterator(); !it.Done(); {
-			k, e := it.Next()
-			d := t.Find(k)
-			if d == zero[D]() {
-				v.Insert(k, e)
-				continue
-			}
-			if f == nil {
-				continue
-			}
-			if c := f(d, e); c != d {
-				if c == zero[D]() {
-					v.Delete(k)
-				} else {
-					v.Insert(k, c)
-				}
-			}
-		}
-		return v
-	}
-
-	v := u.Copy()
-	for it := t.Iterator(); !it.Done(); {
-		k, d := it.Next()
-		e := u.Find(k)
-		if e == zero[D]() {
-			v.Insert(k, d)
-			continue
-		}
-		if f == nil {
-			continue
-		}
-		if c := f(d, e); c != d {
-			if c == zero[D]() {
-				v.Delete(k)
-			} else {
-				v.Insert(k, c)
-			}
-		}
-	}
-	return v
-}
-
-// Difference returns the difference of t and u, except as
-// modified by f.  If f is nil, or returns nil, then the usual
-// difference results, however if it returns not-nil then 
-// the entry is not removed and the new valye is used for the data.
-func Difference[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K, D] {
-	if t.Size() == 0 {
-		return &T[K, D]{}
-	}
-	if u.Size() == 0 {
-		return t
-	}
-	v := t.Copy()
-	for it := t.Iterator(); !it.Done(); {
-		k, d := it.Next()
-		e := u.Find(k)
-		if e != zero[D]() {
-			if f == nil {
-				v.Delete(k)
-				continue
-			}
-			c := f(d, e)
-			if c == zero[D]() {
-				v.Delete(k)
-				continue
-			}
-			if c != d {
-				v.Insert(k, c)
-			}
-		}
-	}
-	return v
-}
-
-func Equals[K Comparable[K], D comparable](t, u *T[K, D]) bool {
-	if t == u {
-		return true
-	}
-	if t.Size() != u.Size() {
-		return false
-	}
-	return equals(t.root, u.root)
-}
-
-const (
-	LEAF_HEIGHT = 1
-	ZERO_HEIGHT = 0
-)
-
-type node[K Comparable[K], D any] struct {
-	// Standard conventions hold for left = smaller, right = larger
-	left, right *node[K, D]
-	data        D
-	key         K
-	height_     int8
-}
-
-func makeNode[K Comparable[K], D any](key K) *node[K, D] {
-	return &node[K, D]{key: key, height_: LEAF_HEIGHT}
-}
-
-func (n *node[K, D]) nilOrData() D {
-	if n == nil {
-		var z D
-		return z
-	}
-	return n.data
-}
-
-func (n *node[K, D]) nilOrKeyAndData() (k K, d D) {
-	if n == nil {
-		var z K
-		k = z
-		d = zero[D]()
-	} else {
-		k = n.key
-		d = n.data
-	}
-	return
-}
-
-func (n *node[K, D]) height() int8 {
-	if n == nil {
-		return 0
-	}
-	return n.height_
-}
-
-func zero[T any]() T {
-	var z T
-	return z
-}
-
-func equals[K Comparable[K], D comparable](t, u *node[K, D]) bool {
+func (t *node32) equiv(u *node32, eqv func(x, y fmt.Stringer) bool) bool {
 	if t == u {
 		return true
 	}
@@ -441,28 +389,7 @@ func equals[K Comparable[K], D comparable](t, u *node[K, D]) bool {
 		if nt == nu {
 			continue
 		}
-		if nt.key.Compare(nu.key) != 0 {
-			return false
-		}
-		if nt.data != nu.data {
-			return false
-		}
-	}
-	return it.isEmpty() == iu.isEmpty()
-}
-
-func (t *node[K, D]) equiv(u *node[K, D], eqv func(x, y D) bool) bool {
-	if t == u {
-		return true
-	}
-	it, iu := t.iterator(), u.iterator()
-	for !it.isEmpty() && !iu.isEmpty() {
-		nt := it.next()
-		nu := iu.next()
-		if nt == nu {
-			continue
-		}
-		if nt.key.Compare(nu.key) != 0 {
+		if nt.key != nu.key {
 			return false
 		}
 		if !eqv(nt.data, nu.data) {
@@ -472,31 +399,47 @@ func (t *node[K, D]) equiv(u *node[K, D], eqv func(x, y D) bool) bool {
 	return it.isEmpty() == iu.isEmpty()
 }
 
-type iterator[K Comparable[K], D any] struct {
-	parents []*node[K, D]
+type iterator struct {
+	parents []*node32
 }
 
-func (t *node[K, D]) iterator() iterator[K, D] {
-	if t == nil {
-		return iterator[K, D]{}
+type Iterator struct {
+	it iterator
+}
+
+func (it *Iterator) Next() (int32, fmt.Stringer) {
+	x := it.it.next()
+	if x == nil {
+		return NOT_KEY32, nil
 	}
-	it := iterator[K, D]{parents: make([]*node[K, D], 0, int(t.height()))}
+	return x.key, x.data
+}
+
+func (it *Iterator) IsEmpty() bool {
+	return len(it.it.parents) == 0
+}
+
+func (t *node32) iterator() iterator {
+	if t == nil {
+		return iterator{}
+	}
+	it := iterator{parents: make([]*node32, 0, int(t.height()))}
 	it.leftmost(t)
 	return it
 }
 
-func (it *iterator[K, D]) leftmost(t *node[K, D]) {
+func (it *iterator) leftmost(t *node32) {
 	for t != nil {
 		it.parents = append(it.parents, t)
 		t = t.left
 	}
 }
 
-func (it *iterator[K, D]) isEmpty() bool {
+func (it *iterator) isEmpty() bool {
 	return len(it.parents) == 0
 }
 
-func (it *iterator[K, D]) next() *node[K, D] {
+func (it *iterator) next() *node32 {
 	l := len(it.parents)
 	if l == 0 {
 		return nil
@@ -519,11 +462,47 @@ func (it *iterator[K, D]) next() *node[K, D] {
 	return x
 }
 
-func (t *node[K, D]) isLeaf() bool {
+// Min returns the minimum element of t.
+// If t is empty, then (NOT_KEY32, nil) is returned.
+func (t *T) Min() (k int32, d fmt.Stringer) {
+	return t.root.min().nilOrKeyAndData()
+}
+
+// Max returns the maximum element of t.
+// If t is empty, then (NOT_KEY32, nil) is returned.
+func (t *T) Max() (k int32, d fmt.Stringer) {
+	return t.root.max().nilOrKeyAndData()
+}
+
+// Glb returns the greatest-lower-bound-exclusive of x and the associated
+// data.  If x has no glb in the tree, then (NOT_KEY32, nil) is returned.
+func (t *T) Glb(x int32) (k int32, d fmt.Stringer) {
+	return t.root.glb(x, false).nilOrKeyAndData()
+}
+
+// GlbEq returns the greatest-lower-bound-inclusive of x and the associated
+// data.  If x has no glbEQ in the tree, then (NOT_KEY32, nil) is returned.
+func (t *T) GlbEq(x int32) (k int32, d fmt.Stringer) {
+	return t.root.glb(x, true).nilOrKeyAndData()
+}
+
+// Lub returns the least-upper-bound-exclusive of x and the associated
+// data.  If x has no lub in the tree, then (NOT_KEY32, nil) is returned.
+func (t *T) Lub(x int32) (k int32, d fmt.Stringer) {
+	return t.root.lub(x, false).nilOrKeyAndData()
+}
+
+// LubEq returns the least-upper-bound-inclusive of x and the associated
+// data.  If x has no lubEq in the tree, then (NOT_KEY32, nil) is returned.
+func (t *T) LubEq(x int32) (k int32, d fmt.Stringer) {
+	return t.root.lub(x, true).nilOrKeyAndData()
+}
+
+func (t *node32) isLeaf() bool {
 	return t.left == nil && t.right == nil && t.height_ == LEAF_HEIGHT
 }
 
-func (t *node[K, D]) visitInOrder(f func(K, D)) {
+func (t *node32) visitInOrder(f func(int32, fmt.Stringer)) {
 	if t.left != nil {
 		t.left.visitInOrder(f)
 	}
@@ -533,12 +512,11 @@ func (t *node[K, D]) visitInOrder(f func(K, D)) {
 	}
 }
 
-func (t *node[K, D]) find(key K) *node[K, D] {
+func (t *node32) find(key int32) *node32 {
 	for t != nil {
-		cmp := key.Compare(t.key)
-		if cmp < 0 {
+		if key < t.key {
 			t = t.left
-		} else if cmp > 0 {
+		} else if key > t.key {
 			t = t.right
 		} else {
 			return t
@@ -547,7 +525,7 @@ func (t *node[K, D]) find(key K) *node[K, D] {
 	return nil
 }
 
-func (t *node[K, D]) min() *node[K, D] {
+func (t *node32) min() *node32 {
 	if t == nil {
 		return t
 	}
@@ -557,7 +535,7 @@ func (t *node[K, D]) min() *node[K, D] {
 	return t
 }
 
-func (t *node[K, D]) max() *node[K, D] {
+func (t *node32) max() *node32 {
 	if t == nil {
 		return t
 	}
@@ -567,11 +545,11 @@ func (t *node[K, D]) max() *node[K, D] {
 	return t
 }
 
-func (t *node[K, D]) glb(key K, allow_eq bool) *node[K, D] {
-	var best *node[K, D] = nil
+func (t *node32) glb(key int32, allow_eq bool) *node32 {
+	var best *node32 = nil
 	for t != nil {
-		if cmp := key.Compare(t.key); cmp <= 0 { 
-			if allow_eq && cmp == 0 {
+		if key <= t.key {
+			if allow_eq && key == t.key {
 				return t
 			}
 			// t is too big, glb is to left.
@@ -585,11 +563,11 @@ func (t *node[K, D]) glb(key K, allow_eq bool) *node[K, D] {
 	return best
 }
 
-func (t *node[K, D]) lub(key K, allow_eq bool) *node[K, D] {
-	var best *node[K, D] = nil
+func (t *node32) lub(key int32, allow_eq bool) *node32 {
+	var best *node32 = nil
 	for t != nil {
-		if cmp := key.Compare(t.key); cmp >= 0 { 
-			if allow_eq && cmp == 0 {
+		if key >= t.key {
+			if allow_eq && key == t.key {
 				return t
 			}
 			// t is too small, lub is to right.
@@ -603,27 +581,26 @@ func (t *node[K, D]) lub(key K, allow_eq bool) *node[K, D] {
 	return best
 }
 
-func (t *node[K, D]) aInsert(x K) (newroot, newnode, oldnode *node[K, D]) {
+func (t *node32) aInsert(x int32) (newroot, newnode, oldnode *node32) {
 	// oldnode default of nil is good, others should be assigned.
-	cmp := x.Compare(t.key)
-	if cmp == 0 {
+	if x == t.key {
 		oldnode = t
 		newt := *t
 		newnode = &newt
 		newroot = newnode
 		return
 	}
-	if cmp < 0 {
+	if x < t.key {
 		if t.left == nil {
 			t = t.copy()
-			n := makeNode[K, D](x)
+			n := makeNode(x)
 			t.left = n
 			newnode = n
 			newroot = t
 			t.height_ = 2 // was balanced w/ 0, sibling is height 0 or 1
 			return
 		}
-		var new_l *node[K, D]
+		var new_l *node32
 		new_l, newnode, oldnode = t.left.aInsert(x)
 		t = t.copy()
 		t.left = new_l
@@ -636,14 +613,14 @@ func (t *node[K, D]) aInsert(x K) (newroot, newnode, oldnode *node[K, D]) {
 	} else { // x > t.key
 		if t.right == nil {
 			t = t.copy()
-			n := makeNode[K, D](x)
+			n := makeNode(x)
 			t.right = n
 			newnode = n
 			newroot = t
 			t.height_ = 2 // was balanced w/ 0, sibling is height 0 or 1
 			return
 		}
-		var new_r *node[K, D]
+		var new_r *node32
 		new_r, newnode, oldnode = t.right.aInsert(x)
 		t = t.copy()
 		t.right = new_r
@@ -657,20 +634,19 @@ func (t *node[K, D]) aInsert(x K) (newroot, newnode, oldnode *node[K, D]) {
 	return
 }
 
-func (t *node[K, D]) aDelete(key K) (deleted, newSubTree *node[K, D]) {
+func (t *node32) aDelete(key int32) (deleted, newSubTree *node32) {
 	if t == nil {
 		return nil, nil
 	}
 
-	cmp := key.Compare(t.key)
-	if cmp < 0 {
+	if key < t.key {
 		oh := t.left.height()
 		d, tleft := t.left.aDelete(key)
 		if tleft == t.left {
 			return d, t
 		}
 		return d, t.copy().aRebalanceAfterLeftDeletion(oh, tleft)
-	} else if cmp > 0 {
+	} else if key > t.key {
 		oh := t.right.height()
 		d, tright := t.right.aDelete(key)
 		if tright == t.right {
@@ -702,7 +678,7 @@ func (t *node[K, D]) aDelete(key K) (deleted, newSubTree *node[K, D]) {
 	return r, t.aRebalanceAfterRightDeletion(oh, tright)
 }
 
-func (t *node[K, D]) aDeleteMin() (deleted, newSubTree *node[K, D]) {
+func (t *node32) aDeleteMin() (deleted, newSubTree *node32) {
 	if t == nil {
 		return nil, nil
 	}
@@ -717,7 +693,7 @@ func (t *node[K, D]) aDeleteMin() (deleted, newSubTree *node[K, D]) {
 	return d, t.copy().aRebalanceAfterLeftDeletion(oh, tleft)
 }
 
-func (t *node[K, D]) aDeleteMax() (deleted, newSubTree *node[K, D]) {
+func (t *node32) aDeleteMax() (deleted, newSubTree *node32) {
 	if t == nil {
 		return nil, nil
 	}
@@ -734,7 +710,7 @@ func (t *node[K, D]) aDeleteMax() (deleted, newSubTree *node[K, D]) {
 	return d, t.copy().aRebalanceAfterRightDeletion(oh, tright)
 }
 
-func (t *node[K, D]) aRebalanceAfterLeftDeletion(oldLeftHeight int8, tleft *node[K, D]) *node[K, D] {
+func (t *node32) aRebalanceAfterLeftDeletion(oldLeftHeight int8, tleft *node32) *node32 {
 	t.left = tleft
 
 	if oldLeftHeight == tleft.height() || oldLeftHeight == t.right.height() {
@@ -753,7 +729,7 @@ func (t *node[K, D]) aRebalanceAfterLeftDeletion(oldLeftHeight int8, tleft *node
 	return t.aRightIsHigh(nil)
 }
 
-func (t *node[K, D]) aRebalanceAfterRightDeletion(oldRightHeight int8, tright *node[K, D]) *node[K, D] {
+func (t *node32) aRebalanceAfterRightDeletion(oldRightHeight int8, tright *node32) *node32 {
 	t.right = tright
 
 	if oldRightHeight == tright.height() || oldRightHeight == t.left.height() {
@@ -774,7 +750,7 @@ func (t *node[K, D]) aRebalanceAfterRightDeletion(oldRightHeight int8, tright *n
 
 // aRightIsHigh does rotations necessary to fix a high right child
 // assume that t and t.right are already fresh copies.
-func (t *node[K, D]) aRightIsHigh(newnode *node[K, D]) *node[K, D] {
+func (t *node32) aRightIsHigh(newnode *node32) *node32 {
 	right := t.right
 	if right.right.height() < right.left.height() {
 		// double rotation
@@ -789,7 +765,7 @@ func (t *node[K, D]) aRightIsHigh(newnode *node[K, D]) *node[K, D] {
 
 // aLeftIsHigh does rotations necessary to fix a high left child
 // assume that t and t.left are already fresh copies.
-func (t *node[K, D]) aLeftIsHigh(newnode *node[K, D]) *node[K, D] {
+func (t *node32) aLeftIsHigh(newnode *node32) *node32 {
 	left := t.left
 	if left.left.height() < left.right.height() {
 		// double rotation
@@ -803,7 +779,7 @@ func (t *node[K, D]) aLeftIsHigh(newnode *node[K, D]) *node[K, D] {
 }
 
 // rightToRoot does that rotation, modifying t and t.right in the process.
-func (t *node[K, D]) rightToRoot() *node[K, D] {
+func (t *node32) rightToRoot() *node32 {
 	//    this
 	// left  right
 	//      rl   rr
@@ -825,7 +801,7 @@ func (t *node[K, D]) rightToRoot() *node[K, D] {
 }
 
 // leftToRoot does that rotation, modifying t and t.left in the process.
-func (t *node[K, D]) leftToRoot() *node[K, D] {
+func (t *node32) leftToRoot() *node32 {
 	//     this
 	//  left  right
 	// ll  lr
@@ -853,7 +829,7 @@ func max(a, b int8) int8 {
 	return b
 }
 
-func (t *node[K, D]) copy() *node[K, D] {
+func (t *node32) copy() *node32 {
 	u := *t
 	return &u
 }

@@ -2,57 +2,29 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package gabt
+package abt
 
 import (
 	"fmt"
-	"github.com/dr2chase/gabt/abt"
-	"math/rand"
 	"strconv"
 	"testing"
 )
 
-type sstring struct {
-	s string
-}
-
-func (s sstring) String() string {
-	return s.s
-}
-
-var z sstring
-
-func stringer(s string) sstring {
-	return sstring{s}
-}
-
-type Int32 int32
-
-func (x Int32) Compare(y Int32) int {
-	if x < y {
-		return -1
-	}
-	if x > y {
-		return 1
-	}
-	return 0
-}
-
-func makeTree(te *testing.T, x []int32, check bool) (t *T[Int32, sstring], k int, min, max Int32) {
-	t = &T[Int32, sstring]{}
+func makeTree(te *testing.T, x []int32, check bool) (t *T, k int, min, max int32) {
+	t = &T{}
 	k = 0
-	min = Int32(0x7fffffff)
-	max = Int32(-0x80000000)
-	history := []*T[Int32, sstring]{}
+	min = int32(0x7fffffff)
+	max = int32(-0x80000000)
+	history := []*T{}
 
-	for _, di := range x {
-		d := Int32(di + di) // double everything for Glb/Lub testing.
+	for _, d := range x {
+		d = d + d // double everything for Glb/Lub testing.
 
 		if check {
 			history = append(history, t.Copy())
 		}
 
-		t.Insert(Int32(d), stringer(fmt.Sprintf("%v", d)))
+		t.Insert(d, stringer(fmt.Sprintf("%v", d)))
 
 		k++
 		if d < min {
@@ -67,7 +39,7 @@ func makeTree(te *testing.T, x []int32, check bool) (t *T[Int32, sstring], k int
 		}
 
 		for j, old := range history {
-			s, i := wellFormed(old)
+			s, i := old.wellFormed()
 			if s != "" {
 				te.Errorf("Old tree consistency problem %v at k=%d, j=%d, old=\n%v, t=\n%v", s, k, j, old.DebugString(), t.DebugString())
 				return
@@ -76,7 +48,7 @@ func makeTree(te *testing.T, x []int32, check bool) (t *T[Int32, sstring], k int
 				te.Errorf("Wrong tree size %v, expected %v for old %v", i, j, old.DebugString())
 			}
 		}
-		s, i := wellFormed(t)
+		s, i := t.wellFormed()
 		if s != "" {
 			te.Errorf("Tree consistency problem at %v", s)
 			return
@@ -100,8 +72,8 @@ func applicInsert(te *testing.T, x []int32) {
 func applicFind(te *testing.T, x []int32) {
 	t, _, _, _ := makeTree(te, x, false)
 
-	for _, di := range x {
-		d := Int32(di + di) // double everything for Glb/Lub testing.
+	for _, d := range x {
+		d = d + d // double everything for Glb/Lub testing.
 		s := fmt.Sprintf("%v", d)
 		f := t.Find(d)
 
@@ -114,8 +86,8 @@ func applicFind(te *testing.T, x []int32) {
 
 func applicBounds(te *testing.T, x []int32) {
 	t, _, min, max := makeTree(te, x, false)
-	for _, di := range x {
-		d := Int32(di + di) // double everything for Glb/Lub testing.
+	for _, d := range x {
+		d = d + d // double everything for Glb/Lub testing.
 		s := fmt.Sprintf("%v", d)
 
 		kg, g := t.Glb(d + 1)
@@ -151,8 +123,8 @@ func applicBounds(te *testing.T, x []int32) {
 		}
 	}
 
-	for _, di := range x {
-		d := Int32(di + di) // double everything for Glb/Lub testing.
+	for _, d := range x {
+		d = d + d // double everything for Glb/Lub testing.
 		s := fmt.Sprintf("%v", d)
 		kge, ge := t.GlbEq(d + 1)
 		kle, le := t.LubEq(d - 1)
@@ -170,26 +142,26 @@ func applicBounds(te *testing.T, x []int32) {
 		}
 	}
 
-	_, g := t.Glb(min)
-	_, ge := t.GlbEq(min - 1)
-	_, l := t.Lub(max)
-	_, le := t.LubEq(max + 1)
+	kg, g := t.Glb(min)
+	kge, ge := t.GlbEq(min - 1)
+	kl, l := t.Lub(max)
+	kle, le := t.LubEq(max + 1)
 	fmin := t.Find(min - 1)
 	fmax := t.Find(max + 1)
 
-	// if kg != NOT_KEY32 || kge != NOT_KEY32 || kl != NOT_KEY32 || kle != NOT_KEY32 {
-	// 	te.Errorf("Got non-error-key for missing query")
-	// }
+	if kg != NOT_KEY32 || kge != NOT_KEY32 || kl != NOT_KEY32 || kle != NOT_KEY32 {
+		te.Errorf("Got non-error-key for missing query")
+	}
 
-	if g != z || ge != z || l != z || le != z || fmin != z || fmax != z {
+	if g != nil || ge != nil || l != nil || le != nil || fmin != nil || fmax != nil {
 		te.Errorf("Got non-error-data for missing query")
 	}
 }
 
 func applicDeleteMin(te *testing.T, x []int32) {
 	t, _, _, _ := makeTree(te, x, false)
-	_, size := wellFormed(t)
-	history := []*T[Int32, sstring]{}
+	_, size := t.wellFormed()
+	history := []*T{}
 	for !t.IsEmpty() {
 		k, _ := t.Min()
 		history = append(history, t.Copy())
@@ -198,7 +170,7 @@ func applicDeleteMin(te *testing.T, x []int32) {
 			te.Errorf("Deleted minimum key %v not equal to minimum %v", kd, k)
 		}
 		for j, old := range history {
-			s, i := wellFormed(old)
+			s, i := old.wellFormed()
 			if s != "" {
 				te.Errorf("Tree consistency problem %s at old after DeleteMin, old=\n%stree=\n%v", s, old.DebugString(), t.DebugString())
 				return
@@ -209,7 +181,7 @@ func applicDeleteMin(te *testing.T, x []int32) {
 			}
 		}
 		size--
-		s, i := wellFormed(t)
+		s, i := t.wellFormed()
 		if s != "" {
 			te.Errorf("Tree consistency problem at %v after DeleteMin, tree=\n%v", s, t.DebugString())
 			return
@@ -227,8 +199,8 @@ func applicDeleteMin(te *testing.T, x []int32) {
 
 func applicDeleteMax(te *testing.T, x []int32) {
 	t, _, _, _ := makeTree(te, x, false)
-	_, size := wellFormed(t)
-	history := []*T[Int32, sstring]{}
+	_, size := t.wellFormed()
+	history := []*T{}
 
 	for !t.IsEmpty() {
 		k, _ := t.Max()
@@ -239,7 +211,7 @@ func applicDeleteMax(te *testing.T, x []int32) {
 		}
 
 		for j, old := range history {
-			s, i := wellFormed(old)
+			s, i := old.wellFormed()
 			if s != "" {
 				te.Errorf("Tree consistency problem %s at old after DeleteMin, old=\n%stree=\n%v", s, old.DebugString(), t.DebugString())
 				return
@@ -251,7 +223,7 @@ func applicDeleteMax(te *testing.T, x []int32) {
 		}
 
 		size--
-		s, i := wellFormed(t)
+		s, i := t.wellFormed()
 		if s != "" {
 			te.Errorf("Tree consistency problem at %v after DeleteMax, tree=\n%v", s, t.DebugString())
 			return
@@ -269,16 +241,16 @@ func applicDeleteMax(te *testing.T, x []int32) {
 
 func applicDelete(te *testing.T, x []int32) {
 	t, _, _, _ := makeTree(te, x, false)
-	_, size := wellFormed(t)
-	history := []*T[Int32, sstring]{}
+	_, size := t.wellFormed()
+	history := []*T{}
 
 	missing := t.Delete(11)
-	if missing != z {
+	if missing != nil {
 		te.Errorf("Returned a value when there should have been none, %v", missing)
 		return
 	}
 
-	s, i := wellFormed(t)
+	s, i := t.wellFormed()
 	if s != "" {
 		te.Errorf("Tree consistency problem at %v after delete of missing value, tree=\n%v", s, t.DebugString())
 		return
@@ -288,14 +260,14 @@ func applicDelete(te *testing.T, x []int32) {
 		return
 	}
 
-	for _, di := range x {
-		d := Int32(di + di) // double
+	for _, d := range x {
+		d += d // double
 		vWant := fmt.Sprintf("%v", d)
 		history = append(history, t.Copy())
 		v := t.Delete(d)
 
 		for j, old := range history {
-			s, i := wellFormed(old)
+			s, i := old.wellFormed()
 			if s != "" {
 				te.Errorf("Tree consistency problem %s at old after DeleteMin, old=\n%stree=\n%v", s, old.DebugString(), t.DebugString())
 				return
@@ -306,12 +278,12 @@ func applicDelete(te *testing.T, x []int32) {
 			}
 		}
 
-		if v.s != vWant {
+		if v.(*sstring).s != vWant {
 			te.Errorf("Deleted %v expected %v but got %v", d, vWant, v)
 			return
 		}
 		size--
-		s, i := wellFormed(t)
+		s, i := t.wellFormed()
 		if s != "" {
 			te.Errorf("Tree consistency problem at %v after Delete %d, tree=\n%v", s, d, t.DebugString())
 			return
@@ -331,7 +303,7 @@ func applicDelete(te *testing.T, x []int32) {
 func applicIterator(te *testing.T, x []int32) {
 	t, _, _, _ := makeTree(te, x, false)
 	it := t.Iterator()
-	for !it.Done() {
+	for !it.IsEmpty() {
 		k0, d0 := it.Next()
 		k1, d1 := t.DeleteMin()
 		if k0 != k1 || d0 != d1 {
@@ -348,48 +320,50 @@ func applicIterator(te *testing.T, x []int32) {
 func applicEquals(te *testing.T, x, y []int32) {
 	t, _, _, _ := makeTree(te, x, false)
 	u, _, _, _ := makeTree(te, y, false)
-	if !Equals(t, t) {
+	if !t.Equals(t) {
 		te.Errorf("Equals failure, t == t, =\n%v", t.DebugString())
 		return
 	}
-	if !Equals(t, t.Copy()) {
+	if !t.Equals(t.Copy()) {
 		te.Errorf("Equals failure, t == t.Copy(), =\n%v", t.DebugString())
 		return
 	}
-	if !Equals(t, u) {
+	if !t.Equals(u) {
 		te.Errorf("Equals failure, t == u, =\n%v", t.DebugString())
 		return
 	}
 	v := t.Copy()
 
 	v.DeleteMax()
-	if Equals(t, v) {
+	if t.Equals(v) {
 		te.Errorf("!Equals failure, t != v, =\n%v\nand%v\n", t.DebugString(), v.DebugString())
 		return
 	}
 
-	if Equals(v, u) {
+	if v.Equals(u) {
 		te.Errorf("!Equals failure, v != u, =\n%v\nand%v\n", v.DebugString(), u.DebugString())
 		return
 	}
 
 }
 
-func tree(x []int32) *T[Int32, sstring] {
-	t := &T[Int32, sstring]{}
+func tree(x []int32) *T {
+	t := &T{}
 	for _, d := range x {
-		t.Insert(Int32(d), stringer(fmt.Sprintf("%v", d)))
+		t.Insert(d, stringer(fmt.Sprintf("%v", d)))
 	}
 	return t
 }
 
-func treePlus1(x []int32) *T[Int32, sstring] {
-	t := &T[Int32, sstring]{}
+func treePlus1(x []int32) *T {
+	t := &T{}
 	for _, d := range x {
-		t.Insert(Int32(d), stringer(fmt.Sprintf("%v", d+1)))
+		t.Insert(d, stringer(fmt.Sprintf("%v", d+1)))
 	}
 	return t
 }
+
+//
 func TestApplicInsert(t *testing.T) {
 	applicInsert(t, []int32{24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 4, 2, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25})
 	applicInsert(t, []int32{1, 2, 3, 4})
@@ -473,16 +447,16 @@ func TestEquals(t *testing.T) {
 		[]int32{1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 4, 2})
 }
 
-func first(x, y sstring) sstring {
+func first(x, y fmt.Stringer) fmt.Stringer {
 	return x
 }
-func second(x, y sstring) sstring {
+func second(x, y fmt.Stringer) fmt.Stringer {
 	return y
 }
-func alwaysNil(x, y sstring) sstring {
-	return z
+func alwaysNil(x, y fmt.Stringer) fmt.Stringer {
+	return nil
 }
-func smaller(x, y sstring) sstring {
+func smaller(x, y fmt.Stringer) fmt.Stringer {
 	xi, _ := strconv.Atoi(x.String())
 	yi, _ := strconv.Atoi(y.String())
 	if xi < yi {
@@ -490,14 +464,14 @@ func smaller(x, y sstring) sstring {
 	}
 	return y
 }
-func assert(t *testing.T, expected, got *T[Int32, sstring], what string) {
-	s, _ := wellFormed(got)
+func assert(t *testing.T, expected, got *T, what string) {
+	s, _ := got.wellFormed()
 	if s != "" {
 		t.Errorf("Tree consistency problem %v for 'got' in assert for %s, tree=\n%v", s, what, got.DebugString())
 		return
 	}
 
-	if !Equals(expected, got) {
+	if !expected.Equals(got) {
 		t.Errorf("%s fail, expected\n%vgot\n%v\n", what, expected.DebugString(), got.DebugString())
 	}
 }
@@ -512,67 +486,79 @@ func TestSetOps(t *testing.T) {
 	AUB := tree([]int32{1, 2, 3, 4, 5, 6, 7})
 	AXB := tree([]int32{1, 2, 5, 6, 7})
 
-	aib1 := Intersection(A, B, first)
+	aib1 := A.Intersection(B, first)
 	assert(t, AIB, aib1, "aib1")
 	if A.Find(3) != aib1.Find(3) {
 		t.Errorf("Failed aliasing/reuse check, A/aib1")
 	}
-	aib2 := Intersection(A, B, second)
+	aib2 := A.Intersection(B, second)
 	assert(t, AIB, aib2, "aib2")
 	if B.Find(3) != aib2.Find(3) {
 		t.Errorf("Failed aliasing/reuse check, B/aib2")
 	}
-	aib3 := Intersection(B, A, first)
+	aib3 := B.Intersection(A, first)
 	assert(t, AIB, aib3, "aib3")
 	if A.Find(3) != aib3.Find(3) {
 		// A is smaller, intersection favors reuse from smaller when function is "first"
 		t.Errorf("Failed aliasing/reuse check, A/aib3")
 	}
-	aib4 := Intersection(B, A, second)
+	aib4 := B.Intersection(A, second)
 	assert(t, AIB, aib4, "aib4")
 	if A.Find(3) != aib4.Find(3) {
 		t.Errorf("Failed aliasing/reuse check, A/aib4")
 	}
 
-	aub1 := Union(A, B, first)
+	aub1 := A.Union(B, first)
 	assert(t, AUB, aub1, "aub1")
 	if B.Find(3) != aub1.Find(3) {
 		// B is larger, union favors reuse from larger when function is "first"
 		t.Errorf("Failed aliasing/reuse check, A/aub1")
 	}
-	aub2 := Union(A, B, second)
+	aub2 := A.Union(B, second)
 	assert(t, AUB, aub2, "aub2")
 	if B.Find(3) != aub2.Find(3) {
 		t.Errorf("Failed aliasing/reuse check, B/aub2")
 	}
-	aub3 := Union(B, A, first)
+	aub3 := B.Union(A, first)
 	assert(t, AUB, aub3, "aub3")
 	if B.Find(3) != aub3.Find(3) {
 		t.Errorf("Failed aliasing/reuse check, B/aub3")
 	}
-	aub4 := Union(B, A, second)
+	aub4 := B.Union(A, second)
 	assert(t, AUB, aub4, "aub4")
 	if A.Find(3) != aub4.Find(3) {
 		t.Errorf("Failed aliasing/reuse check, A/aub4")
 	}
 
-	axb1 := Union(A, B, alwaysNil)
+	axb1 := A.Union(B, alwaysNil)
 	assert(t, AXB, axb1, "axb1")
-	axb2 := Union(B, A, alwaysNil)
+	axb2 := B.Union(A, alwaysNil)
 	assert(t, AXB, axb2, "axb2")
 
-	adb := Difference(A, B, alwaysNil)
+	adb := A.Difference(B, alwaysNil)
 	assert(t, ADB, adb, "adb")
-	bda := Difference(B, A, nil)
+	bda := B.Difference(A, nil)
 	assert(t, BDA, bda, "bda")
 
 	Ap1 := treePlus1([]int32{1, 2, 3, 4})
 
-	ada1_1 := Difference(A, Ap1, smaller)
+	ada1_1 := A.Difference(Ap1, smaller)
 	assert(t, A, ada1_1, "ada1_1")
-	ada1_2 := Difference(Ap1, A, smaller)
+	ada1_2 := Ap1.Difference(A, smaller)
 	assert(t, A, ada1_2, "ada1_2")
 
+}
+
+type sstring struct {
+	s string
+}
+
+func (s *sstring) String() string {
+	return s.s
+}
+
+func stringer(s string) fmt.Stringer {
+	return &sstring{s}
 }
 
 // wellFormed ensures that a red-black tree meets
@@ -581,13 +567,13 @@ func TestSetOps(t *testing.T) {
 // then the returned string is empty. The size is also
 // returned to allow comparison of calculated tree size
 // with expected.
-func wellFormed(t *T[Int32, sstring]) (s string, i int) {
+func (t *T) wellFormed() (s string, i int) {
 	if t.root == nil {
 		s = ""
 		i = 0
 		return
 	}
-	return wellFormedSubtree(t.root, nil, -0x80000000, 0x7fffffff)
+	return t.root.wellFormedSubtree(nil, -0x80000000, 0x7fffffff)
 }
 
 // wellFormedSubtree ensures that a red-black subtree meets
@@ -596,7 +582,7 @@ func wellFormed(t *T[Int32, sstring]) (s string, i int) {
 // then the returned string is empty. The size is also
 // returned to allow comparison of calculated tree size
 // with expected.
-func wellFormedSubtree(t, parent *node[Int32, sstring], keyMin, keyMax Int32) (s string, i int) {
+func (t *node32) wellFormedSubtree(parent *node32, keyMin, keyMax int32) (s string, i int) {
 	i = -1 // initialize to a failing value
 	s = "" // s is the reason for failure; empty means okay.
 
@@ -667,7 +653,7 @@ func wellFormedSubtree(t, parent *node[Int32, sstring], keyMin, keyMax Int32) (s
 
 	ii := 1
 	if l != nil {
-		res, il := wellFormedSubtree(l, t, keyMin, t.key)
+		res, il := l.wellFormedSubtree(t, keyMin, t.key)
 		if res != "" {
 			s = ".L" + res
 			return
@@ -675,7 +661,7 @@ func wellFormedSubtree(t, parent *node[Int32, sstring], keyMin, keyMax Int32) (s
 		ii += il
 	}
 	if r != nil {
-		res, ir := wellFormedSubtree(r, t, t.key, keyMax)
+		res, ir := r.wellFormedSubtree(t, t.key, keyMax)
 		if res != "" {
 			s = ".R" + res
 			return
@@ -686,7 +672,7 @@ func wellFormedSubtree(t, parent *node[Int32, sstring], keyMin, keyMax Int32) (s
 	return
 }
 
-func (t *T[K, D]) DebugString() string {
+func (t *T) DebugString() string {
 	if t.root == nil {
 		return ""
 	}
@@ -695,7 +681,7 @@ func (t *T[K, D]) DebugString() string {
 
 // DebugString prints the tree with nested information
 // to allow an eyeball check on the tree balance.
-func (t *node[K, D]) DebugString(indent int) string {
+func (t *node32) DebugString(indent int) string {
 	s := ""
 	if t.left != nil {
 		s = s + t.left.DebugString(indent+1)
@@ -708,140 +694,4 @@ func (t *node[K, D]) DebugString(indent int) string {
 		s = s + t.right.DebugString(indent+1)
 	}
 	return s
-}
-
-var values []sstring
-var random1000Indices []Int32
-var ordered []Int32
-var gTree T[Int32, sstring]
-var aTree abt.T
-
-const N = 1000
-
-func init() {
-	for i := Int32(0); i < N; i++ {
-		values = append(values, stringer(fmt.Sprintf("v%d", i)))
-		ordered = append(ordered, i)
-		gTree.Insert(i, values[i])
-		aTree.Insert(int32(i), values[i])
-	}
-	random1000Indices = append(random1000Indices, ordered...)
-	rand.Shuffle(N, func(i, j int) {
-		random1000Indices[i], random1000Indices[j] = random1000Indices[j], random1000Indices[i]
-	})
-}
-
-func insertN(N Int32) T[Int32, sstring] {
-	if N > Int32(len(values)) {
-		for i := Int32(len(values)); i < N; i++ {
-			values[i] = stringer(fmt.Sprintf("v%d", i))
-			ordered = append(ordered, i)
-		}
-	}
-	tree := T[Int32, sstring]{}
-	for j := Int32(0); j < N; j++ {
-		jj := ordered[j]
-		tree.Insert(jj, values[jj])
-	}
-	return tree
-}
-
-func BenchmarkGInsertSeq1000(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		t := insertN(1000)
-		if t.Size() != 1000 {
-			panic("Wrong size!")
-		}
-	}
-}
-
-func BenchmarkGInsertRand1000(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		tree := T[Int32, sstring]{}
-		for j := Int32(0); j < N; j++ {
-			jj := random1000Indices[j]
-			tree.Insert(jj, values[jj])
-		}
-		if tree.Size() != 1000 {
-			panic("Wrong size!")
-		}
-	}
-}
-
-func BenchmarkGFindSeq1000(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		for j := Int32(0); j < N; j++ {
-			jj := ordered[j]
-			v := gTree.Find(jj)
-			if v.s == "" {
-				panic("Unexpected empty result")
-			}
-		}
-
-	}
-}
-
-func BenchmarkGFindRand1000(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		for j := Int32(0); j < N; j++ {
-			jj := random1000Indices[j]
-			v := gTree.Find(jj)
-			if v.s == "" {
-				panic("Unexpected empty result")
-			}
-		}
-	}
-}
-
-// not generic
-
-func BenchmarkNGInsertSeq1000(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		tree := abt.T{}
-		for j := Int32(0); j < N; j++ {
-			jj := ordered[j]
-			tree.Insert(int32(jj), values[jj])
-		}
-		if tree.Size() != 1000 {
-			panic("Wrong size!")
-		}
-	}
-}
-
-func BenchmarkNGInsertRand1000(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		tree := abt.T{}
-		for j := Int32(0); j < N; j++ {
-			jj := random1000Indices[j]
-			tree.Insert(int32(jj), values[jj])
-		}
-		if tree.Size() != 1000 {
-			panic("Wrong size!")
-		}
-	}
-}
-
-func BenchmarkNGFindSeq1000(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		for j := Int32(0); j < N; j++ {
-			jj := int32(ordered[j])
-			v := aTree.Find(jj)
-			if v.(sstring).s == "" {
-				panic("Unexpected empty result")
-			}
-		}
-
-	}
-}
-
-func BenchmarkNGFindRand1000(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		for j := Int32(0); j < N; j++ {
-			jj := random1000Indices[j]
-			v := aTree.Find(int32(jj))
-			if v.(sstring).s == "" {
-				panic("Unexpected empty result")
-			}
-		}
-	}
 }

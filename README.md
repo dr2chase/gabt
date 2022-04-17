@@ -14,8 +14,10 @@ generic version of relatively well-tested non-generic code that may get used in
 the Go compiler, so reasons for change would involve tweaking the interface,
 not a wholesale rewrite.
 
+The `abt` subdirectory contains the original, and is there for benchmarking comparison.
+
 Known flaws:<br>
-- Think before you just bang in `x < y` for Less if the type is floating point, NaN is not your friend.  I recommend storing as the integer bit pattern instead in whatever Less-able type you use to wrap it.
+- Think before you just bang in `x - y` for signed int Compare, that is vulnerable to to overflow.  I was tempted to use floating point instead, since that would actually work, and lack branches.
 - nil won't work as either key or value.
 - the generic idiom for an all-types nil value is
   ```
@@ -23,3 +25,4 @@ Known flaws:<br>
   ... nilT ...
   ```
 - I didn't implement `Split(k K)` which would return the two trees on either side of the key `k`.
+- benchmarking is far from comprehensive.
