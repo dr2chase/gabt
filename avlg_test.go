@@ -6,10 +6,11 @@ package gabt
 
 import (
 	"fmt"
-	"github.com/dr2chase/gabt/abt"
 	"math/rand"
 	"strconv"
 	"testing"
+
+	"github.com/dr2chase/gabt/abt"
 )
 
 type sstring struct {
@@ -330,9 +331,9 @@ func applicDelete(te *testing.T, x []int32) {
 
 func applicIterator(te *testing.T, x []int32) {
 	t, _, _, _ := makeTree(te, x, false)
-	it := t.Iterator()
-	for !it.Done() {
-		k0, d0 := it.Next()
+	it := t.ToIter()
+	for !it.Next() {
+		k0, d0 := it.Value()
 		k1, d1 := t.DeleteMin()
 		if k0 != k1 || d0 != d1 {
 			te.Errorf("Iterator and deleteMin mismatch, k0, k1, d0, d1 = %v, %v, %v, %v", k0, k1, d0, d1)
@@ -793,6 +794,19 @@ func BenchmarkGFindRand1000(b *testing.B) {
 	}
 }
 
+func BenchmarkGIterate1000(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		sum := int32(0)
+		for it := gTree.ToIter(); !it.Next(); {
+			k, _ := it.Value()
+			sum += int32(k)
+		}
+		if sum == -1 {
+			panic("Should not happen")
+		}
+	}
+}
+
 // not generic
 
 func BenchmarkNGInsertSeq1000(b *testing.B) {
@@ -842,6 +856,19 @@ func BenchmarkNGFindRand1000(b *testing.B) {
 			if v.(sstring).s == "" {
 				panic("Unexpected empty result")
 			}
+		}
+	}
+}
+
+func BenchmarkNGIterate1000(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		sum := int32(0)
+		for it := aTree.Iterator(); !it.IsEmpty(); {
+			k, _ := it.Next()
+			sum += k
+		}
+		if sum == -1 {
+			panic("Should not happen")
 		}
 	}
 }

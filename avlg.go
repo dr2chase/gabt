@@ -124,11 +124,11 @@ func (t *T[K, D]) Size() int {
 	return t.size
 }
 
-type Iterator[K Comparable[K], D any] struct {
+type Iter[K Comparable[K], D any] struct {
 	it iterator[K, D]
 }
 
-func (it *Iterator[K, D]) Next() (K, D) {
+func (it *Iter[K, D]) Value() (K, D) {
 	x := it.it.next()
 	if x == nil {
 		return zero[K](), zero[D]()
@@ -136,7 +136,7 @@ func (it *Iterator[K, D]) Next() (K, D) {
 	return x.key, x.data
 }
 
-func (it *Iterator[K, D]) Done() bool {
+func (it *Iter[K, D]) Next() bool {
 	return len(it.it.parents) == 0
 }
 
@@ -194,15 +194,15 @@ func (t *T[K, D]) LubEq(x K) (k K, d D) {
 // 	return b.String()
 // }
 
-func (t *T[K, D]) Iterator() Iterator[K, D] {
-	return Iterator[K, D]{it: t.root.iterator()}
+func (t *T[K, D]) ToIter() Iter[K, D] {
+	return Iter[K, D]{it: t.root.iterator()}
 }
 
 func (t *T[K, D]) String() string {
 	var b string
 	first := true
-	for it := t.Iterator(); !it.Done(); {
-		k, v := it.Next()
+	for it := t.ToIter(); !it.Next(); {
+		k, v := it.Value()
 		if first {
 			first = false
 		} else {
@@ -238,8 +238,8 @@ func Intersection[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D
 	// For faster execution and less allocation, prefer t smaller, iterate over t.
 	if t.Size() <= u.Size() {
 		v := t.Copy()
-		for it := t.Iterator(); !it.Done(); {
-			k, d := it.Next()
+		for it := t.ToIter(); !it.Next(); {
+			k, d := it.Value()
 			e := u.Find(k)
 			if e == zero[D]() {
 				v.Delete(k)
@@ -259,8 +259,8 @@ func Intersection[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D
 		return v
 	}
 	v := u.Copy()
-	for it := u.Iterator(); !it.Done(); {
-		k, e := it.Next()
+	for it := u.ToIter(); !it.Next(); {
+		k, e := it.Value()
 		d := t.Find(k)
 		if d == zero[D]() {
 			v.Delete(k)
@@ -295,8 +295,8 @@ func Union[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K,
 
 	if t.Size() >= u.Size() {
 		v := t.Copy()
-		for it := u.Iterator(); !it.Done(); {
-			k, e := it.Next()
+		for it := u.ToIter(); !it.Next(); {
+			k, e := it.Value()
 			d := t.Find(k)
 			if d == zero[D]() {
 				v.Insert(k, e)
@@ -317,8 +317,8 @@ func Union[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K,
 	}
 
 	v := u.Copy()
-	for it := t.Iterator(); !it.Done(); {
-		k, d := it.Next()
+	for it := t.ToIter(); !it.Next(); {
+		k, d := it.Value()
 		e := u.Find(k)
 		if e == zero[D]() {
 			v.Insert(k, d)
@@ -340,7 +340,7 @@ func Union[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K,
 
 // Difference returns the difference of t and u, except as
 // modified by f.  If f is nil, or returns nil, then the usual
-// difference results, however if it returns not-nil then 
+// difference results, however if it returns not-nil then
 // the entry is not removed and the new valye is used for the data.
 func Difference[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K, D] {
 	if t.Size() == 0 {
@@ -350,8 +350,8 @@ func Difference[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) 
 		return t
 	}
 	v := t.Copy()
-	for it := t.Iterator(); !it.Done(); {
-		k, d := it.Next()
+	for it := t.ToIter(); !it.Next(); {
+		k, d := it.Value()
 		e := u.Find(k)
 		if e != zero[D]() {
 			if f == nil {
@@ -570,7 +570,7 @@ func (t *node[K, D]) max() *node[K, D] {
 func (t *node[K, D]) glb(key K, allow_eq bool) *node[K, D] {
 	var best *node[K, D] = nil
 	for t != nil {
-		if cmp := key.Compare(t.key); cmp <= 0 { 
+		if cmp := key.Compare(t.key); cmp <= 0 {
 			if allow_eq && cmp == 0 {
 				return t
 			}
@@ -588,7 +588,7 @@ func (t *node[K, D]) glb(key K, allow_eq bool) *node[K, D] {
 func (t *node[K, D]) lub(key K, allow_eq bool) *node[K, D] {
 	var best *node[K, D] = nil
 	for t != nil {
-		if cmp := key.Compare(t.key); cmp >= 0 { 
+		if cmp := key.Compare(t.key); cmp >= 0 {
 			if allow_eq && cmp == 0 {
 				return t
 			}
