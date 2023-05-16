@@ -17,6 +17,18 @@ type T[K Comparable[K], D any] struct {
 	size int
 }
 
+type String string
+
+func (s String) Compare(t String) int {
+	if s == t {
+		return 0
+	}
+	if s < t {
+		return -1
+	}
+	return 1
+}
+
 // IsSingle returns true iff t is empty.
 func (t *T[K, D]) IsEmpty() bool {
 	return t.root == nil
