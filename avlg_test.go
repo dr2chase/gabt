@@ -39,11 +39,11 @@ func (x Int32) Compare(y Int32) int {
 	return 0
 }
 
-func makeTree(te *testing.T, x []int32, check bool) (t *T[Int32, sstring], k int, min, max Int32) {
+func makeTree(te *testing.T, x []int32, check bool) (t *T[Int32, sstring], k int, minimum, maximum Int32) {
 	t = &T[Int32, sstring]{}
 	k = 0
-	min = Int32(0x7fffffff)
-	max = Int32(-0x80000000)
+	minimum = Int32(0x7fffffff)
+	maximum = Int32(-0x80000000)
 	history := []*T[Int32, sstring]{}
 
 	for _, di := range x {
@@ -56,11 +56,11 @@ func makeTree(te *testing.T, x []int32, check bool) (t *T[Int32, sstring], k int
 		t.Insert(Int32(d), stringer(fmt.Sprintf("%v", d)))
 
 		k++
-		if d < min {
-			min = d
+		if d < minimum {
+			minimum = d
 		}
-		if d > max {
-			max = d
+		if d > maximum {
+			maximum = d
 		}
 
 		if !check {
@@ -114,7 +114,7 @@ func applicFind(te *testing.T, x []int32) {
 }
 
 func applicBounds(te *testing.T, x []int32) {
-	t, _, min, max := makeTree(te, x, false)
+	t, _, minimum, maximum := makeTree(te, x, false)
 	for _, di := range x {
 		d := Int32(di + di) // double everything for Glb/Lub testing.
 		s := fmt.Sprintf("%v", d)
@@ -171,12 +171,12 @@ func applicBounds(te *testing.T, x []int32) {
 		}
 	}
 
-	_, g := t.Glb(min)
-	_, ge := t.GlbEq(min - 1)
-	_, l := t.Lub(max)
-	_, le := t.LubEq(max + 1)
-	fmin := t.Find(min - 1)
-	fmax := t.Find(max + 1)
+	_, g := t.Glb(minimum)
+	_, ge := t.GlbEq(minimum - 1)
+	_, l := t.Lub(maximum)
+	_, le := t.LubEq(maximum + 1)
+	fmin := t.Find(minimum - 1)
+	fmax := t.Find(maximum + 1)
 
 	// if kg != NOT_KEY32 || kge != NOT_KEY32 || kl != NOT_KEY32 || kle != NOT_KEY32 {
 	// 	te.Errorf("Got non-error-key for missing query")
@@ -332,8 +332,8 @@ func applicDelete(te *testing.T, x []int32) {
 func applicIterator(te *testing.T, x []int32) {
 	t, _, _, _ := makeTree(te, x, false)
 	it := t.ToIter()
-	for !it.Next() {
-		k0, d0 := it.Value()
+	for it.More() {
+		k0, d0 := it.Next()
 		k1, d1 := t.DeleteMin()
 		if k0 != k1 || d0 != d1 {
 			te.Errorf("Iterator and deleteMin mismatch, k0, k1, d0, d1 = %v, %v, %v, %v", k0, k1, d0, d1)
@@ -342,6 +342,32 @@ func applicIterator(te *testing.T, x []int32) {
 	}
 	if t.Size() != 0 {
 		te.Errorf("Iterator ended early, remaining tree = \n%s", t.DebugString())
+		return
+	}
+}
+
+func applicDoAll(te *testing.T, x []int32) {
+	t, _, _, _ := makeTree(te, x, false)
+
+	j := 0
+	yield := func(i Int32, s sstring) bool {
+		j++
+		si := stringer(strconv.FormatInt(int64(i), 10))
+		if s != si {
+			te.Errorf("s(%s) != si(%s) for i (%s)", s.String(), si, strconv.FormatInt(int64(i), 10))
+			return false
+		}
+		if j > 0 {
+			fmt.Print(", ")
+		}
+		fmt.Printf("[%s %s]", strconv.FormatInt(int64(i), 10), s.String())
+		return true
+	}
+
+	t.DoAll2(yield)
+	fmt.Printf("\n")
+	if t.Size() != j {
+		te.Errorf("t.Size() (%d) != j (%d)", t.Size(), j)
 		return
 	}
 }
@@ -462,6 +488,16 @@ func TestIterator(t *testing.T) {
 	applicIterator(t, []int32{25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1})
 	applicIterator(t, []int32{1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24})
 	applicIterator(t, []int32{1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 4, 2})
+}
+func TestDoAll2(t *testing.T) {
+	applicDoAll(t, []int32{1, 2, 3, 4})
+	applicDoAll(t, []int32{1, 2, 3, 4, 5, 6, 7, 8, 9})
+	applicDoAll(t, []int32{24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 4, 2, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25})
+	applicDoAll(t, []int32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25})
+	applicDoAll(t, []int32{25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1})
+	applicDoAll(t, []int32{25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1})
+	applicDoAll(t, []int32{1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24})
+	applicDoAll(t, []int32{1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 4, 2})
 }
 func TestEquals(t *testing.T) {
 	applicEquals(t, []int32{1, 2, 3, 4}, []int32{4, 3, 2, 1})
@@ -602,12 +638,12 @@ func wellFormedSubtree(t, parent *node[Int32, sstring], keyMin, keyMax Int32) (s
 	s = "" // s is the reason for failure; empty means okay.
 
 	if keyMin >= t.key {
-		s = " min >= t.key"
+		s = " keyMin >= t.key"
 		return
 	}
 
 	if keyMax <= t.key {
-		s = " max <= t.key"
+		s = " keyMax <= t.key"
 		return
 	}
 
@@ -797,8 +833,8 @@ func BenchmarkGFindRand1000(b *testing.B) {
 func BenchmarkGIterate1000(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		sum := int32(0)
-		for it := gTree.ToIter(); !it.Next(); {
-			k, _ := it.Value()
+		for it := gTree.ToIter(); it.More(); {
+			k, _ := it.Next()
 			sum += int32(k)
 		}
 		if sum == -1 {

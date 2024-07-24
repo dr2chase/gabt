@@ -39,15 +39,6 @@ func (t *T[K, D]) IsSingle() bool {
 	return t.root != nil && t.root.isLeaf()
 }
 
-// VisitInOrder applies f to the key and ComparableStringerata pairs in t,
-// with keys ordered from smallest to largest.
-func (t *T[K, D]) VisitInOrder(f func(K, D)) {
-	if t.root == nil {
-		return
-	}
-	t.root.visitInOrder(f)
-}
-
 // Find returns the data associated with x in the tree, or
 // nil if x is not in the tree.
 func (t *T[K, D]) Find(x K) D {
@@ -140,7 +131,7 @@ type Iter[K Comparable[K], D any] struct {
 	it iterator[K, D]
 }
 
-func (it *Iter[K, D]) Value() (K, D) {
+func (it *Iter[K, D]) Next() (K, D) {
 	x := it.it.next()
 	if x == nil {
 		return zero[K](), zero[D]()
@@ -148,20 +139,20 @@ func (it *Iter[K, D]) Value() (K, D) {
 	return x.key, x.data
 }
 
-func (it *Iter[K, D]) Next() bool {
-	return len(it.it.parents) == 0
+func (it *Iter[K, D]) More() bool {
+	return len(it.it.parents) != 0
 }
 
 // Min returns the minimum element of t.
 // If t is empty, then (nil, nil) is returned.
 func (t *T[K, D]) Min() (k K, d D) {
-	return t.root.min().nilOrKeyAndData()
+	return t.root.minimum().nilOrKeyAndData()
 }
 
 // Max returns the maximum element of t.
 // If t is empty, then (nil, nil) is returned.
 func (t *T[K, D]) Max() (k K, d D) {
-	return t.root.max().nilOrKeyAndData()
+	return t.root.maximum().nilOrKeyAndData()
 }
 
 // Glb returns the greatest-lower-bound-exclusive of x and the associated
@@ -210,11 +201,36 @@ func (t *T[K, D]) ToIter() Iter[K, D] {
 	return Iter[K, D]{it: t.root.iterator()}
 }
 
+func (t *T[K, D]) Iter2() func() (K, D, bool) {
+	I := t.ToIter()
+	return func() (K, D, bool) {
+		if I.More() {
+			k, d := I.Next()
+			return k, d, true
+		}
+		var zk K
+		var zd D
+		return zk, zd, false
+	}
+}
+
+func (t *T[K, D]) Iter() func() (K, bool) {
+	I := t.ToIter()
+	return func() (K, bool) {
+		if I.More() {
+			k, _ := I.Next()
+			return k, true
+		}
+		var zk K
+		return zk, false
+	}
+}
+
 func (t *T[K, D]) String() string {
 	var b string
 	first := true
-	for it := t.ToIter(); !it.Next(); {
-		k, v := it.Value()
+	for it := t.ToIter(); it.More(); {
+		k, v := it.Next()
 		if first {
 			first = false
 		} else {
@@ -237,6 +253,30 @@ func (t *T[K, D]) Equiv(u *T[K, D], eqv func(x, y D) bool) bool {
 	return t.root.equiv(u.root, eqv)
 }
 
+// VisitInOrder applies f to the key and ComparableStringerata pairs in t,
+// with keys ordered from smallest to largest.
+func (t *T[K, D]) VisitInOrder(f func(K, D)) {
+	if t.root == nil {
+		return
+	}
+	t.root.visitInOrder(f)
+}
+
+// DoAll2 returns an iterator over keys and data
+func (t *T[K, D]) DoAll2(yield func(k K, d D) bool) bool {
+	return t.root.doAll2(yield)
+}
+
+// DoAll returns an iterator over keys.
+func (t *T[K, D]) DoAll(yield func(k K) bool) bool {
+	return t.root.doAll(yield)
+}
+
+// DoAll_ returns an iterator over data.
+func (t *T[K, D]) DoAll_(yield func(d D) bool) bool {
+	return t.root.doAll_(yield)
+}
+
 // Intersection returns the the intersection of T and U, with data modified
 // by the result of f(t.data, u.data); if non-nil/zero, that is the stored value,
 // if nil, then the entry is not added.  If f is nil, then the data from the
@@ -250,8 +290,8 @@ func Intersection[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D
 	// For faster execution and less allocation, prefer t smaller, iterate over t.
 	if t.Size() <= u.Size() {
 		v := t.Copy()
-		for it := t.ToIter(); !it.Next(); {
-			k, d := it.Value()
+		for it := t.ToIter(); it.More(); {
+			k, d := it.Next()
 			e := u.Find(k)
 			if e == zero[D]() {
 				v.Delete(k)
@@ -271,8 +311,8 @@ func Intersection[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D
 		return v
 	}
 	v := u.Copy()
-	for it := u.ToIter(); !it.Next(); {
-		k, e := it.Value()
+	for it := u.ToIter(); it.More(); {
+		k, e := it.Next()
 		d := t.Find(k)
 		if d == zero[D]() {
 			v.Delete(k)
@@ -307,8 +347,8 @@ func Union[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K,
 
 	if t.Size() >= u.Size() {
 		v := t.Copy()
-		for it := u.ToIter(); !it.Next(); {
-			k, e := it.Value()
+		for it := u.ToIter(); it.More(); {
+			k, e := it.Next()
 			d := t.Find(k)
 			if d == zero[D]() {
 				v.Insert(k, e)
@@ -329,8 +369,8 @@ func Union[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K,
 	}
 
 	v := u.Copy()
-	for it := t.ToIter(); !it.Next(); {
-		k, d := it.Value()
+	for it := t.ToIter(); it.More(); {
+		k, d := it.Next()
 		e := u.Find(k)
 		if e == zero[D]() {
 			v.Insert(k, d)
@@ -353,7 +393,7 @@ func Union[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K,
 // Difference returns the difference of t and u, except as
 // modified by f.  If f is nil, or returns nil, then the usual
 // difference results, however if it returns not-nil then
-// the entry is not removed and the new valye is used for the data.
+// the entry is not removed and the new value is used for the data.
 func Difference[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) *T[K, D] {
 	if t.Size() == 0 {
 		return &T[K, D]{}
@@ -362,8 +402,8 @@ func Difference[K Comparable[K], D comparable](t, u *T[K, D], f func(x, y D) D) 
 		return t
 	}
 	v := t.Copy()
-	for it := t.ToIter(); !it.Next(); {
-		k, d := it.Value()
+	for it := t.ToIter(); it.More(); {
+		k, d := it.Next()
 		e := u.Find(k)
 		if e != zero[D]() {
 			if f == nil {
@@ -440,6 +480,27 @@ func (n *node[K, D]) height() int8 {
 func zero[T any]() T {
 	var z T
 	return z
+}
+
+func (n *node[K, D]) doAll2(yield func(k K, d D) bool) bool {
+	if n == nil {
+		return true
+	}
+	return n.left.doAll2(yield) && yield(n.key, n.data) && n.right.doAll2(yield)
+}
+
+func (n *node[K, D]) doAll(yield func(k K) bool) bool {
+	if n == nil {
+		return true
+	}
+	return n.left.doAll(yield) && yield(n.key) && n.right.doAll(yield)
+}
+
+func (n *node[K, D]) doAll_(yield func(d D) bool) bool {
+	if n == nil {
+		return true
+	}
+	return n.left.doAll_(yield) && yield(n.data) && n.right.doAll_(yield)
 }
 
 func equals[K Comparable[K], D comparable](t, u *node[K, D]) bool {
@@ -559,7 +620,7 @@ func (t *node[K, D]) find(key K) *node[K, D] {
 	return nil
 }
 
-func (t *node[K, D]) min() *node[K, D] {
+func (t *node[K, D]) minimum() *node[K, D] {
 	if t == nil {
 		return t
 	}
@@ -569,7 +630,7 @@ func (t *node[K, D]) min() *node[K, D] {
 	return t
 }
 
-func (t *node[K, D]) max() *node[K, D] {
+func (t *node[K, D]) maximum() *node[K, D] {
 	if t == nil {
 		return t
 	}
@@ -856,13 +917,6 @@ func (t *node[K, D]) leftToRoot() *node[K, D] {
 	t.height_ = 1 + max(lr.height(), t.right.height())
 	left.height_ = 1 + max(t.height(), left.left.height())
 	return left
-}
-
-func max(a, b int8) int8 {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func (t *node[K, D]) copy() *node[K, D] {
